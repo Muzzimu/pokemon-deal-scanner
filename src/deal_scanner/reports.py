@@ -52,18 +52,22 @@ def build_cheap_hits(rows: list[dict], cfg: dict) -> list[dict]:
 
 
 def build_dragonite(rows: list[dict], cfg: dict) -> list[dict]:
-    query = cfg["watchlists"]["dragonite"]["query"].lower()
+    rules = cfg["watchlists"]["dragonite"]
+    query = rules["query"].lower()
     out = [r for r in rows if query in r["name"].lower()]
-    target_hero = float(cfg["watchlists"]["dragonite"]["target_hero_cost_eur"])
-    target_support = float(cfg["watchlists"]["dragonite"]["target_support_cost_eur"])
+    target_support = float(rules["target_support_cost_eur"])
+    target_standalone = float(rules["standalone_buy_max_landed_eur"])
+    target_bundle = float(rules["bundle_buy_max_landed_eur"])
     for r in out:
         validated = r.get("best_validated_sourcing_price")
         if validated is None:
             r["dragonite_target"] = "VALIDATE_EN_NM"
         elif validated <= target_support:
-            r["dragonite_target"] = "SUPPORT_BUY"
-        elif validated <= target_hero:
-            r["dragonite_target"] = "HERO_BUY"
+            r["dragonite_target"] = "SUPPORT_PRICE_CANDIDATE"
+        elif validated <= target_standalone:
+            r["dragonite_target"] = "HERO_PRICE_CANDIDATE"
+        elif validated <= target_bundle:
+            r["dragonite_target"] = "BUNDLE_PRICE_CANDIDATE"
         else:
             r["dragonite_target"] = "WAIT"
     return sorted(out, key=lambda x: (x.get("best_validated_sourcing_price") or 999, -x["deal_score"]))
@@ -129,6 +133,7 @@ def generate_reports(conn, cfg: dict, output_dir: Path) -> dict:
         "generic_discovery_ok", "validated_buy_ok",
     ])
     status = {
+        "version": str(cfg.get("version", "unknown")),
         "cardmarket_snapshot_date": latest_snapshot_date(conn),
         "cardtrader_snapshot_date": latest_cardtrader_snapshot_date(conn),
         "cards_scored": len(scored),
@@ -138,7 +143,7 @@ def generate_reports(conn, cfg: dict, output_dir: Path) -> dict:
         "bundle_rows": len(bundles),
         "validated_cardmarket_en_nm": sum(1 for r in scored if r.get("cm_en_nm_floor") is not None),
         "visible_cardtrader_en_nm": sum(1 for r in scored if r.get("ct_en_nm_floor") is not None),
-        "pricing_guardrail": "Generic Cardmarket low is discovery only. BUY requires Cardmarket EN/NM validation or is explicitly labelled CardTrader EN/NM.",
+        "pricing_guardrail": "Cardmarket generic low is discovery only. A Cardmarket BUY requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing evidence layer. CardTrader EN/NM remains separately labelled.",
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "scanner_status.json").write_text(json.dumps(status, indent=2), encoding="utf-8")
