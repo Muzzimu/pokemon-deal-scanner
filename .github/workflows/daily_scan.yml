@@ -2,8 +2,6 @@ name: Daily Pokemon Deal Scan
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
     # GitHub cron is UTC. Running at both hours plus the local-hour guard below
     # gives ~07:05 Europe/Dublin across daylight-saving changes.
@@ -28,7 +26,7 @@ jobs:
         id: timecheck
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "push" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           elif [[ "$(TZ=Europe/Dublin date +%H)" == "07" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
