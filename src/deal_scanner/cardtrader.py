@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import json
 import time
-from datetime import datetime, timezone
 from typing import Iterable
 
 import requests
+
+
+POKEMON_GAME_ID = 5
 
 
 class CardTraderError(RuntimeError):
@@ -23,7 +24,7 @@ class CardTraderClient:
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {token}",
-            "User-Agent": "pokemon-deal-scanner/0.2 (+personal research)",
+            "User-Agent": "pokemon-deal-scanner/0.3 (+personal research)",
             "Accept": "application/json",
         })
 
@@ -55,7 +56,6 @@ class CardTraderClient:
         return self._get("/blueprints/export", params={"expansion_id": expansion_id})
 
     def marketplace(self, expansion_id: int, *, language: str = "en"):
-        # CardTrader docs: marketplace/products accepts expansion_id and language.
         return self._get(
             "/marketplace/products",
             params={"expansion_id": expansion_id, "language": language},
@@ -74,21 +74,28 @@ def _rows(payload) -> list[dict]:
 
 
 def pokemon_expansions(payload) -> list[dict]:
-    """Keep Pokémon expansions while tolerating either game-name or game-id shapes."""
+    """Return only Pokémon expansions.
+
+    CardTrader's current Pokémon game_id is 5. Previous v0.2 code incorrectly
+    treated game_id 6 as Pokémon, which populated Blueprints for the wrong game
+    and therefore produced zero Cardmarket mappings.
+    """
     exps = _rows(payload)
     out = []
+    saw_game_signal = False
     for e in exps:
         game = e.get("game") or e.get("game_name") or e.get("gameName")
         if isinstance(game, dict):
             game = game.get("name")
         game_id = e.get("game_id") or e.get("gameId")
+        if game is not None or game_id is not None:
+            saw_game_signal = True
         if game and "pokemon" in str(game).lower():
             out.append(e)
-        elif str(game_id) == "6":
+        elif str(game_id) == str(POKEMON_GAME_ID):
             out.append(e)
-    # If payload was already explicitly scoped to Pokémon, retaining all is safer
-    # than returning nothing due to undocumented wrappers.
-    return out if out else exps
+    # Only fall back when the payload genuinely contains no game discriminator.
+    return out if saw_game_signal else exps
 
 
 def expansion_id(e: dict) -> int | None:
@@ -129,14 +136,36 @@ def _seller(product: dict) -> dict:
 
 
 def _price_eur(product: dict) -> float | None:
-    # Documented API price is cents in common CardTrader examples; allow a few wrappers.
-    for key in ("price", "price_cents", "priceCents"):
+    """Return EUR marketplace price while respecting CardTrader's Money shape."""
+    price = product.get("price")
+    if isinstance(price, dict):
+        cents = price.get("cents")
+        currency = str(price.get("currency") or "EUR").upper()
+        if currency != "EUR":
+            return None
+        try:
+            return None if cents is None else float(cents) / 100.0
+        except (TypeError, ValueError):
+            return None
+
+    # Export-style payloads can expose price_cents + price_currency.
+    for key in ("price_cents", "priceCents"):
         if product.get(key) is not None:
+            currency = str(product.get("price_currency") or product.get("priceCurrency") or "EUR").upper()
+            if currency != "EUR":
+                return None
             try:
-                value = float(product[key])
-                return value / 100.0
+                return float(product[key]) / 100.0
             except (TypeError, ValueError):
                 pass
+
+    # Older/simple wrappers may expose numeric price in cents.
+    if price is not None:
+        try:
+            return float(price) / 100.0
+        except (TypeError, ValueError):
+            pass
+
     for key in ("price_eur", "priceEuro", "price_euro"):
         if product.get(key) is not None:
             try:
@@ -174,14 +203,9 @@ def _bool(product: dict, *keys, default=False) -> bool:
 
 
 def normalize_marketplace(payload, blueprint_to_products: dict[int, list[int]]) -> list[dict]:
-    """Flatten CardTrader's grouped marketplace response.
-
-    The endpoint has historically returned a mapping of blueprint id -> offer list,
-    while some clients expose list wrappers. We support both.
-    """
+    """Flatten CardTrader's grouped marketplace response into comparable offers."""
     pairs: list[tuple[int | None, dict]] = []
     if isinstance(payload, dict):
-        # Common shape: {"123": [offers], "456": [offers]}
         grouped = False
         for k, v in payload.items():
             if isinstance(v, list) and str(k).isdigit():
@@ -203,26 +227,27 @@ def normalize_marketplace(payload, blueprint_to_products: dict[int, list[int]]) 
         if bid is None or oid is None:
             continue
         mapped = blueprint_to_products.get(bid, [])
-        # card_market_ids should normally create one exact product mapping. If a
-        # Blueprint maps to multiple ids, duplicate offer rows by product so we do
-        # not silently claim identity; later reports can inspect/avoid ambiguity.
         if not mapped:
             mapped = [None]
-        props = p.get("properties") or {}
-        language = _prop_value(props, "language") or p.get("language")
+
+        # Live marketplace uses properties_hash. Keep properties as a fallback.
+        props = p.get("properties_hash") or p.get("properties") or {}
+        language = _prop_value(props, "pokemon_language", "language", "mtg_language") or p.get("language")
         condition = _prop_value(props, "condition") or p.get("condition")
         graded = _prop_value(props, "graded")
         if graded is None:
             graded = p.get("graded", False)
+
         s = _seller(p)
         seller_id = s.get("id") or p.get("seller_id")
         seller_username = s.get("username") or s.get("name") or p.get("seller_username")
         seller_country = s.get("country_code") or s.get("country") or p.get("seller_country")
         quantity = p.get("quantity") or p.get("qty") or 1
-        on_vacation = s.get("on_vacation") if "on_vacation" in s else p.get("on_vacation", False)
-        ct_zero = _bool(p, "cardtrader_zero", "ct_zero", "zero", default=False)
+        on_vacation = p.get("on_vacation", s.get("on_vacation", False))
+        ct_zero = bool(s.get("can_sell_via_hub")) or _bool(p, "cardtrader_zero", "ct_zero", "zero", default=False)
         if isinstance(p.get("shipping_method"), dict):
             ct_zero = ct_zero or bool(p["shipping_method"].get("cardtrader_zero"))
+
         for pid in mapped:
             out.append({
                 "offer_id": oid,
