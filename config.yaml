@@ -1,3 +1,4 @@
+version: "0.3"
 timezone: Europe/Dublin
 
 sources:
@@ -10,15 +11,16 @@ paths:
   raw_dir: data/raw/cardmarket
   output_dir: output
   en_nm_overrides: data/reference/en_nm_overrides.csv
+  cardmarket_sourcing_offers: data/reference/cardmarket_sourcing_offers.csv
 
 catalog:
-  refresh_weekday: 4          # Friday; Monday=0
+  refresh_weekday: 4
   refresh_if_older_days: 7
 
 rules:
   # IMPORTANT: Cardmarket's official "low" is NOT English+NM-specific.
-  # It is discovery-only. A Cardmarket BUY uses a manually validated EN/NM floor.
-  # CardTrader BUYs are separately labelled and use CardTrader EN/NM live offers.
+  # It is discovery-only. A Cardmarket BUY also requires Ireland-eligible sourcing
+  # evidence and a confirmed landed/basket-adjusted cost.
   cheap_hit_discovery_low_max_eur: 0.50
   cheap_hit_actionable_en_nm_max_eur: 0.60
   minimum_avg30_for_gap_score_eur: 0.20
@@ -58,16 +60,18 @@ cardtrader:
   enabled: true
   token_env: CARDTRADER_API_TOKEN
   language: en
-  # CardTrader is an independent live European source, NOT a substitute label
-  # for Cardmarket's English+NM floor.
   actionable_en_nm_max_eur: 0.60
-  # Spend live API calls on cheap-looking hits and all character/watchlist cards.
   candidate_generic_low_max_eur: 1.00
   max_candidate_products: 400
-  # First run requires a blueprint mapping bootstrap. Daily runs reuse SQLite.
   auto_bootstrap_if_empty: true
   marketplace_delay_seconds: 1.05
   other_delay_seconds: 0.08
+
+sourcing:
+  required_language: en
+  required_condition: NM
+  required_destination: Ireland
+  seller_risk_max_penalty_eur: 1.50
 
 seller_baskets:
   max_unit_price_eur: 0.70
@@ -75,15 +79,16 @@ seller_baskets:
   max_copies_per_card: 4
   max_units_per_seller: 30
   target_landed_per_hit_eur: 0.60
-  # Planning number only. Actual checkout shipping must be verified.
   planning_direct_shipping_eur: 2.00
   max_report_rows: 100
 
 watchlists:
   dragonite:
     query: Dragonite
-    target_hero_cost_eur: 6.00
     target_support_cost_eur: 1.75
+    standalone_buy_max_landed_eur: 9.00
+    bundle_buy_max_landed_eur: 10.50
+    exceptional_landed_eur: 8.50
 
 bundles:
   characters:
