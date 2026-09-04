@@ -29,6 +29,7 @@ from deal_scanner.db import (
     upsert_products,
 )
 from deal_scanner.reports import generate_reports
+from deal_scanner.sourcing import generate_cardmarket_sourcing_report
 
 
 def refresh_catalog_needed(cfg, archive_dir: Path, today: date) -> bool:
@@ -71,11 +72,11 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
     expansion_ids = expansion_ids_for_products(conn, candidate_ids)
     inserted = 0
     queried = 0
+    candidate_set = set(candidate_ids)
     for eid in expansion_ids:
         bpmap = blueprint_product_map_for_expansion(conn, eid)
         payload = client.marketplace(eid, language=cfg["cardtrader"]["language"])
         normalized = normalize_marketplace(payload, bpmap)
-        candidate_set = set(candidate_ids)
         filtered = [o for o in normalized if o.get("id_product") in candidate_set]
         inserted += insert_cardtrader_offers(conn, filtered, today)
         queried += 1
@@ -102,6 +103,7 @@ def main() -> int:
     raw_dir = resolve_path(cfg, cfg["paths"]["raw_dir"])
     output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
     override_csv = resolve_path(cfg, cfg["paths"]["en_nm_overrides"])
+    sourcing_csv = resolve_path(cfg, cfg["paths"]["cardmarket_sourcing_offers"])
     conn = connect(db_path)
 
     archive_dir = None if args.no_archive else raw_dir
@@ -159,18 +161,23 @@ def main() -> int:
         else:
             cardtrader_status = {"enabled": False, "reason": f"missing {cfg['cardtrader']['token_env']}"}
 
-    report_status = generate_reports(conn, cfg, output_dir)
+    generate_reports(conn, cfg, output_dir)
     ct_date = latest_cardtrader_snapshot_date(conn)
     seller_rows = build_seller_baskets(conn, ct_date, cfg)
     write_seller_baskets(output_dir / "seller_baskets.csv", seller_rows)
+    sourcing_status = generate_cardmarket_sourcing_report(
+        conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
+    )
 
     status_path = output_dir / "scanner_status.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))
     status.update({
+        "version": str(cfg.get("version", "unknown")),
         "products_upserted": product_count,
         "price_rows_upserted": price_count,
         "manual_cardmarket_en_nm_overrides_loaded": validated_count,
         "cardtrader": cardtrader_status,
+        "cardmarket_sourcing": sourcing_status,
         "seller_basket_rows": len(seller_rows),
     })
     status_path.write_text(json.dumps(status, indent=2), encoding="utf-8")
