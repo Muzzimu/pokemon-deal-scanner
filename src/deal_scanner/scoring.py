@@ -37,12 +37,13 @@ def score_row(row: dict, cfg: dict) -> dict:
     vol = volatility(row.get("hist_avg_low"), row.get("hist_avg_sq"))
 
     generic_discovery = low is not None and low <= cfg["rules"]["cheap_hit_discovery_low_max_eur"]
-    cm_actionable = cm_en is not None and cm_en <= cfg["rules"]["cheap_hit_actionable_en_nm_max_eur"]
+    cm_price_candidate = cm_en is not None and cm_en <= cfg["rules"]["cheap_hit_actionable_en_nm_max_eur"]
     ct_actionable = ct_en is not None and ct_en <= cfg["cardtrader"]["actionable_en_nm_max_eur"]
 
-    # Generic low deliberately cannot earn the sourcing-price component.
-    actionable_prices = [x for x in (cm_en, ct_en) if x is not None]
-    sourcing_price = min(actionable_prices) if actionable_prices else None
+    # Article-price benchmarks are useful for scoring, but Cardmarket EN/NM alone
+    # is no longer sufficient for BUY: v0.3 requires Ireland shipping + landed cost.
+    validated_prices = [x for x in (cm_en, ct_en) if x is not None]
+    sourcing_price = min(validated_prices) if validated_prices else None
     price_score = 0.0 if sourcing_price is None else max(0.0, 1.0 - min(sourcing_price, 2.0) / 2.0)
     gap_score = 0.0 if gap is None else max(0.0, min(gap / 80.0, 1.0))
     avg_support = 0.0 if avg30 is None else max(0.0, min(avg30 / 2.0, 1.0))
@@ -50,10 +51,10 @@ def score_row(row: dict, cfg: dict) -> dict:
     supply_score = min(float(supply) / 10.0, 1.0)
     score = 100 * (0.36 * price_score + 0.23 * gap_score + 0.23 * pop + 0.10 * avg_support + 0.08 * supply_score)
 
-    if cm_actionable:
-        status = "BUY_CM_EN_NM"
-    elif ct_actionable:
+    if ct_actionable:
         status = "BUY_CT_EN_NM"
+    elif cm_price_candidate:
+        status = "CHECK_CM_IRELAND_LANDED"
     elif sourcing_price is not None:
         status = "WATCH_VALIDATED_EN_NM"
     elif generic_discovery:
@@ -67,7 +68,8 @@ def score_row(row: dict, cfg: dict) -> dict:
         "popularity_score": pop,
         "volatility_30d": vol,
         "generic_discovery": generic_discovery,
-        "cm_actionable": cm_actionable,
+        "cm_actionable": False,
+        "cm_price_candidate": cm_price_candidate,
         "ct_actionable": ct_actionable,
         "best_validated_sourcing_price": sourcing_price,
         "deal_score": round(score, 1),
