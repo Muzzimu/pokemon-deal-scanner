@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import csv
 import json
+from datetime import date
 from pathlib import Path
 
 from .scoring import matches_hit, score_row
 
 
 COMMON_FIELDS = [
-    "id_product", "name", "expansion_name", "number", "rarity", "snapshot_date",
-    "low", "trend", "avg1", "avg7", "avg30",
+    "id_product", "name", "expansion_name", "number", "rarity", "date_added", "snapshot_date",
+    "product_age_days", "low", "trend", "avg1", "avg7", "avg30",
     "cm_en_nm_floor", "cm_en_nm_checked_at",
     "ct_en_nm_floor", "ct_visible_units", "ct_visible_sellers", "ct_zero_units",
     "hist_low", "hist_days", "gap_pct", "volatility_30d",
@@ -19,6 +20,17 @@ COMMON_FIELDS = [
 
 def _to_dict(row) -> dict:
     return dict(row)
+
+
+def _age_days(date_added, snapshot_date) -> int | None:
+    if not date_added or not snapshot_date:
+        return None
+    try:
+        added = date.fromisoformat(str(date_added)[:10])
+        snap = date.fromisoformat(str(snapshot_date)[:10])
+        return max(0, (snap - added).days)
+    except (TypeError, ValueError):
+        return None
 
 
 def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
@@ -31,7 +43,12 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]) -> None:
 
 
 def scored_rows(db_rows, cfg: dict) -> list[dict]:
-    return [score_row(_to_dict(r), cfg) for r in db_rows]
+    out = []
+    for row in db_rows:
+        scored = score_row(_to_dict(row), cfg)
+        scored["product_age_days"] = _age_days(scored.get("date_added"), scored.get("snapshot_date"))
+        out.append(scored)
+    return out
 
 
 def build_cheap_hits(rows: list[dict], cfg: dict) -> list[dict]:
@@ -76,8 +93,14 @@ def build_dragonite(rows: list[dict], cfg: dict) -> list[dict]:
 def build_top_flips(rows: list[dict], cfg: dict) -> list[dict]:
     min_avg = cfg["rules"]["minimum_avg30_for_gap_score_eur"]
     min_gap = cfg["rules"]["minimum_gap_pct"]
+    min_age = int(cfg["rules"].get("min_product_age_days_for_flip_signal", 0))
     out = []
     for r in rows:
+        # New releases often have unstable day-1 lows/averages.  Do not call the
+        # launch volatility a "flip signal" until the product has aged enough.
+        age = r.get("product_age_days")
+        if age is not None and age < min_age:
+            continue
         if (r.get("avg30") or 0) < min_avg:
             continue
         if (r.get("gap_pct") or -999) < min_gap:
@@ -141,9 +164,10 @@ def generate_reports(conn, cfg: dict, output_dir: Path) -> dict:
         "dragonite_rows": len(dragons),
         "top_flip_rows": len(flips),
         "bundle_rows": len(bundles),
+        "new_product_signal_guard_days": int(cfg["rules"].get("min_product_age_days_for_flip_signal", 0)),
         "validated_cardmarket_en_nm": sum(1 for r in scored if r.get("cm_en_nm_floor") is not None),
         "visible_cardtrader_en_nm": sum(1 for r in scored if r.get("ct_en_nm_floor") is not None),
-        "pricing_guardrail": "Cardmarket generic low is discovery only. A Cardmarket BUY requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing evidence layer. CardTrader EN/NM remains separately labelled.",
+        "pricing_guardrail": "Cardmarket generic low is discovery only. A Cardmarket BUY requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing evidence layer. CardTrader EN/NM remains separately labelled. eBay active asks are never labelled as sold prices.",
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "scanner_status.json").write_text(json.dumps(status, indent=2), encoding="utf-8")
