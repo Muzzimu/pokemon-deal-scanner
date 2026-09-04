@@ -59,6 +59,10 @@ jobs:
         if: steps.timecheck.outputs.run == 'true'
         run: python scripts/run_daily_ci.py --no-archive
 
+      - name: Exact PGO076 CardTrader test
+        if: steps.timecheck.outputs.run == 'true' && env.CARDTRADER_API_TOKEN != ''
+        run: python scripts/diagnose_pgo076.py
+
       - name: Save scanner database state
         if: steps.timecheck.outputs.run == 'true'
         uses: actions/cache/save@v4
