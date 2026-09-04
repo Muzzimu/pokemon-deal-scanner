@@ -28,6 +28,8 @@ from deal_scanner.db import (
     upsert_cardtrader_blueprints,
     upsert_products,
 )
+from deal_scanner.maintenance import compact_history
+from deal_scanner.market_observatory import generate_resale_candidates, run_ebay_observatory
 from deal_scanner.reports import generate_reports
 from deal_scanner.sourcing import generate_cardmarket_sourcing_report
 
@@ -93,6 +95,7 @@ def main() -> int:
     ap.add_argument("--demo", action="store_true", help="Use bundled offline Cardmarket + CardTrader fixtures")
     ap.add_argument("--no-archive", action="store_true", help="Use temporary Cardmarket downloads instead of raw archive")
     ap.add_argument("--skip-cardtrader", action="store_true")
+    ap.add_argument("--skip-ebay", action="store_true")
     ap.add_argument("--bootstrap-cardtrader", action="store_true", help="Force Blueprint-map refresh before marketplace sync")
     args = ap.parse_args()
 
@@ -104,6 +107,8 @@ def main() -> int:
     output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
     override_csv = resolve_path(cfg, cfg["paths"]["en_nm_overrides"])
     sourcing_csv = resolve_path(cfg, cfg["paths"]["cardmarket_sourcing_offers"])
+    ebay_watchlist_csv = resolve_path(cfg, cfg["paths"]["ebay_watchlist"])
+    ebay_sold_csv = resolve_path(cfg, cfg["paths"]["ebay_sold_evidence"])
     conn = connect(db_path)
 
     archive_dir = None if args.no_archive else raw_dir
@@ -169,6 +174,25 @@ def main() -> int:
         conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
     )
 
+    if args.skip_ebay:
+        ebay_status = {"enabled": False, "reason": "--skip-ebay"}
+        # Keep a valid empty output contract for downstream jobs.
+        from deal_scanner.market_observatory import write_market_reference
+        write_market_reference(output_dir / "ebay_market_reference.csv", [])
+    else:
+        ebay_status = run_ebay_observatory(
+            conn, cfg, ebay_watchlist_csv, ebay_sold_csv,
+            output_dir / "ebay_market_reference.csv",
+        )
+
+    resale_rows = generate_resale_candidates(
+        output_dir / "cardmarket_sourcing.csv",
+        output_dir / "ebay_market_reference.csv",
+        output_dir / "resale_candidates.csv",
+        cfg,
+    )
+    maintenance_status = compact_history(conn, cfg, today=today)
+
     status_path = output_dir / "scanner_status.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))
     status.update({
@@ -178,6 +202,9 @@ def main() -> int:
         "manual_cardmarket_en_nm_overrides_loaded": validated_count,
         "cardtrader": cardtrader_status,
         "cardmarket_sourcing": sourcing_status,
+        "ebay_market_observatory": ebay_status,
+        "resale_candidate_rows": resale_rows,
+        "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
     })
     status_path.write_text(json.dumps(status, indent=2), encoding="utf-8")
