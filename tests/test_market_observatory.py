@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
-
 from deal_scanner.db import connect
 from deal_scanner.market_observatory import (
     choose_reference,
     ensure_ebay_schema,
+    expected_location_country,
+    item_location_matches,
     reconcile_listing_state,
     title_matches,
 )
@@ -21,6 +21,18 @@ def test_exact_raw_card_title_matcher_rejects_slabs_and_wrong_language():
     assert not title_matches("PSA 10 Pokemon GO Dragonite V 076/078", watch)
     assert not title_matches("Pokemon GO Dragonite V 076/078 Japanese", watch)
     assert not title_matches("Pokemon GO Dragonite V 049/078 English", watch)
+
+
+def test_marketplace_site_does_not_override_physical_item_location():
+    assert expected_location_country("EBAY_IE") == "IE"
+    assert expected_location_country("EBAY_DE") == "DE"
+    assert expected_location_country("EBAY_GB") == "GB"
+    assert expected_location_country("EBAY_US") is None
+
+    assert item_location_matches({"item_location_country": "DE"}, "DE")
+    assert not item_location_matches({"item_location_country": "US"}, "DE")
+    assert not item_location_matches({"item_location_country": None}, "DE")
+    assert item_location_matches({"item_location_country": "US"}, None)
 
 
 def test_reference_precedence_keeps_asks_labelled_as_weak():
