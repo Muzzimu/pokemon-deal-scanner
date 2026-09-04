@@ -57,7 +57,7 @@ jobs:
 
       - name: Run scanner
         if: steps.timecheck.outputs.run == 'true'
-        run: python scripts/run_daily.py --no-archive
+        run: python scripts/run_daily_ci.py --no-archive
 
       - name: Save scanner database state
         if: steps.timecheck.outputs.run == 'true'
