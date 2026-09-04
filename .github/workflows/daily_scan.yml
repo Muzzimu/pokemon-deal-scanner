@@ -62,7 +62,7 @@ jobs:
 
       - name: Run scanner
         if: steps.timecheck.outputs.run == 'true'
-        run: python scripts/run_daily_ci.py --no-archive
+        run: python scripts/run_daily.py --no-archive
 
       - name: Exact PGO076 CardTrader test
         if: steps.timecheck.outputs.run == 'true' && env.CARDTRADER_API_TOKEN != ''
