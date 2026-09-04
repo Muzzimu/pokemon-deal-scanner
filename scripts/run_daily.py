@@ -11,7 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from deal_scanner.baskets import build_seller_baskets, write_seller_baskets
-from deal_scanner.cardmarket import copy_fixture, download, latest_archive, read_catalog, read_price_guide
+from deal_scanner.cardmarket import (
+    copy_fixture,
+    download,
+    filter_price_rows_to_catalog,
+    latest_archive,
+    read_catalog,
+    read_price_guide,
+)
 from deal_scanner.cardtrader import CardTraderClient, blueprint_rows, expansion_id, expansion_name, normalize_marketplace, pokemon_expansions
 from deal_scanner.config import load_config, resolve_path
 from deal_scanner.db import (
@@ -131,6 +138,10 @@ def main() -> int:
     catalog = read_catalog(catalog_path)
     prices, source_created_at = read_price_guide(price_path)
     product_count = upsert_products(conn, catalog, today_s)
+    valid_product_ids = [r["id_product"] for r in conn.execute("SELECT id_product FROM products")]
+    prices, skipped_price_rows = filter_price_rows_to_catalog(prices, valid_product_ids)
+    if skipped_price_rows:
+        print(f"Cardmarket price rows skipped because product is absent from catalogue: {skipped_price_rows}")
     price_count = insert_price_snapshot(conn, prices, today_s, source_created_at)
     validated_count = load_en_nm_overrides(conn, override_csv)
 
@@ -176,7 +187,6 @@ def main() -> int:
 
     if args.skip_ebay:
         ebay_status = {"enabled": False, "reason": "--skip-ebay"}
-        # Keep a valid empty output contract for downstream jobs.
         from deal_scanner.market_observatory import write_market_reference
         write_market_reference(output_dir / "ebay_market_reference.csv", [])
     else:
@@ -199,6 +209,7 @@ def main() -> int:
         "version": str(cfg.get("version", "unknown")),
         "products_upserted": product_count,
         "price_rows_upserted": price_count,
+        "cardmarket_price_rows_skipped_stale": skipped_price_rows,
         "manual_cardmarket_en_nm_overrides_loaded": validated_count,
         "cardtrader": cardtrader_status,
         "cardmarket_sourcing": sourcing_status,
