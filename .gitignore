@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+data/raw/cardmarket/**/*.json
+db/*.sqlite
+db/*.sqlite-*
+output/*.csv
+output/*.json
+!tests/fixtures/*.json

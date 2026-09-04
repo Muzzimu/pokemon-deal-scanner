@@ -1,0 +1,15 @@
+{
+  "createdAt": "2026-09-04T06:00:00+00:00",
+  "priceGuides": [
+    {"idProduct": 900001, "low": 0.10, "trend": 0.54, "avg1": 0.55, "avg7": 0.58, "avg30": 0.60},
+    {"idProduct": 900002, "low": 0.35, "trend": 0.92, "avg1": 0.97, "avg7": 1.02, "avg30": 1.09},
+    {"idProduct": 900003, "low": 0.15, "trend": 0.38, "avg1": 0.40, "avg7": 0.41, "avg30": 0.42},
+    {"idProduct": 900004, "low": 0.45, "trend": 0.95, "avg1": 1.00, "avg7": 1.04, "avg30": 1.10},
+    {"idProduct": 900005, "low": 0.29, "trend": 0.65, "avg1": 0.69, "avg7": 0.72, "avg30": 0.75},
+    {"idProduct": 900006, "low": 3.85, "trend": 8.94, "avg1": 8.76, "avg7": 8.65, "avg30": 9.22},
+    {"idProduct": 900007, "low": 1.20, "trend": 2.20, "avg1": 2.10, "avg7": 2.25, "avg30": 2.34},
+    {"idProduct": 900008, "low": 0.50, "trend": 2.00, "avg1": 2.05, "avg7": 2.08, "avg30": 2.09},
+    {"idProduct": 900009, "low": 0.20, "trend": 0.52, "avg1": 0.54, "avg7": 0.53, "avg30": 0.54},
+    {"idProduct": 900010, "low": 0.20, "trend": 0.48, "avg1": 0.50, "avg7": 0.49, "avg30": 0.51}
+  ]
+}

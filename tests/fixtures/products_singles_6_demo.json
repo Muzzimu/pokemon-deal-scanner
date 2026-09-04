@@ -1,0 +1,14 @@
+{
+  "products": [
+    {"idProduct": 900001, "name": "Mega Zeraora ex", "categoryName": "Pokemon", "expansionName": "Pitch Black", "number": "027", "rarity": "Double Rare"},
+    {"idProduct": 900002, "name": "Mega Greninja ex", "categoryName": "Pokemon", "expansionName": "Crimson", "number": "022", "rarity": "Double Rare"},
+    {"idProduct": 900003, "name": "Morpeko ex", "categoryName": "Pokemon", "expansionName": "Pitch Black", "number": "055", "rarity": "Double Rare"},
+    {"idProduct": 900004, "name": "Arcanine ex", "categoryName": "Pokemon", "expansionName": "Scarlet Violet", "number": "032", "rarity": "Double Rare"},
+    {"idProduct": 900005, "name": "Stunfisk ex", "categoryName": "Pokemon", "expansionName": "Ascended Heroes", "number": "252", "rarity": "Ultra Rare"},
+    {"idProduct": 900006, "name": "Dragonite V", "categoryName": "Pokemon", "expansionName": "Pokemon GO", "number": "076", "rarity": "Ultra Rare"},
+    {"idProduct": 900007, "name": "Dragonite VSTAR", "categoryName": "Pokemon", "expansionName": "Pokemon GO", "number": "050", "rarity": "Holo Rare VSTAR"},
+    {"idProduct": 900008, "name": "Dragonite ex", "categoryName": "Pokemon", "expansionName": "Obsidian Flames", "number": "159", "rarity": "Double Rare"},
+    {"idProduct": 900009, "name": "Mega Slowbro ex", "categoryName": "Pokemon", "expansionName": "Pitch Black", "number": "031", "rarity": "Double Rare"},
+    {"idProduct": 900010, "name": "Mega Heracross ex", "categoryName": "Pokemon", "expansionName": "Crimson", "number": "023", "rarity": "Double Rare"}
+  ]
+}

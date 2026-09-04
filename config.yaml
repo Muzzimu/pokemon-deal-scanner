@@ -1,0 +1,101 @@
+timezone: Europe/Dublin
+
+sources:
+  cardmarket_catalog_url: https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_6.json
+  cardmarket_price_url: https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_6.json
+  cardtrader_base_url: https://api.cardtrader.com/api/v2
+
+paths:
+  database: db/pokemon_deal_scanner.sqlite
+  raw_dir: data/raw/cardmarket
+  output_dir: output
+  en_nm_overrides: data/reference/en_nm_overrides.csv
+
+catalog:
+  refresh_weekday: 4          # Friday; Monday=0
+  refresh_if_older_days: 7
+
+rules:
+  # IMPORTANT: Cardmarket's official "low" is NOT English+NM-specific.
+  # It is discovery-only. A Cardmarket BUY uses a manually validated EN/NM floor.
+  # CardTrader BUYs are separately labelled and use CardTrader EN/NM live offers.
+  cheap_hit_discovery_low_max_eur: 0.50
+  cheap_hit_actionable_en_nm_max_eur: 0.60
+  minimum_avg30_for_gap_score_eur: 0.20
+  minimum_gap_pct: 20
+  max_report_rows: 250
+
+  hit_patterns:
+    - '\bex\b'
+    - '\bV\b'
+    - '\bVSTAR\b'
+    - '\bVMAX\b'
+    - '\bGX\b'
+    - '\bMega\b'
+
+  popularity:
+    Dragonite: 1.00
+    Pikachu: 1.00
+    Charizard: 1.00
+    Eevee: 0.95
+    Gengar: 0.95
+    Mew: 0.95
+    Mewtwo: 0.95
+    Rayquaza: 0.95
+    Lugia: 0.90
+    Greninja: 0.90
+    Lucario: 0.85
+    Gyarados: 0.85
+    Arcanine: 0.80
+    Bulbasaur: 0.80
+    Squirtle: 0.80
+    Charmander: 0.85
+    Snorlax: 0.80
+    Morpeko: 0.75
+    Zeraora: 0.75
+
+cardtrader:
+  enabled: true
+  token_env: CARDTRADER_API_TOKEN
+  language: en
+  # CardTrader is an independent live European source, NOT a substitute label
+  # for Cardmarket's English+NM floor.
+  actionable_en_nm_max_eur: 0.60
+  # Spend live API calls on cheap-looking hits and all character/watchlist cards.
+  candidate_generic_low_max_eur: 1.00
+  max_candidate_products: 400
+  # First run requires a blueprint mapping bootstrap. Daily runs reuse SQLite.
+  auto_bootstrap_if_empty: true
+  marketplace_delay_seconds: 1.05
+  other_delay_seconds: 0.08
+
+seller_baskets:
+  max_unit_price_eur: 0.70
+  min_distinct_hits: 5
+  max_copies_per_card: 4
+  max_units_per_seller: 30
+  target_landed_per_hit_eur: 0.60
+  # Planning number only. Actual checkout shipping must be verified.
+  planning_direct_shipping_eur: 2.00
+  max_report_rows: 100
+
+watchlists:
+  dragonite:
+    query: Dragonite
+    target_hero_cost_eur: 6.00
+    target_support_cost_eur: 1.75
+
+bundles:
+  characters:
+    - Dragonite
+    - Pikachu
+    - Gengar
+    - Eevee
+    - Greninja
+    - Lucario
+    - Gyarados
+    - Arcanine
+  cards_per_bundle: 5
+  hero_count: 1
+  max_generic_discovery_cost_eur: 12.00
+  max_validated_en_nm_cost_eur: 16.00

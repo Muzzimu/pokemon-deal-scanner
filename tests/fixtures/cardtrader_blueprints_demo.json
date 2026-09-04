@@ -1,0 +1,12 @@
+[
+  {"id": 500001, "name": "Mega Zeraora ex", "card_market_ids": [900001]},
+  {"id": 500002, "name": "Mega Greninja ex", "card_market_ids": [900002]},
+  {"id": 500003, "name": "Morpeko ex", "card_market_ids": [900003]},
+  {"id": 500004, "name": "Arcanine ex", "card_market_ids": [900004]},
+  {"id": 500005, "name": "Stunfisk ex", "card_market_ids": [900005]},
+  {"id": 500006, "name": "Dragonite V", "card_market_ids": [900006]},
+  {"id": 500007, "name": "Dragonite VSTAR", "card_market_ids": [900007]},
+  {"id": 500008, "name": "Dragonite ex", "card_market_ids": [900008]},
+  {"id": 500009, "name": "Mega Slowbro ex", "card_market_ids": [900009]},
+  {"id": 500010, "name": "Mega Heracross ex", "card_market_ids": [900010]}
+]
