@@ -8,6 +8,7 @@ v0.4 keeps the v0.3 Ireland sourcing rules and adds a separate **resale-intellig
 
 - Adds an optional **eBay regional market observatory** using the official Browse API.
 - Keeps **Ireland, continental EU, UK and Global** eBay evidence separate. EUR/GBP/USD are never silently mixed.
+- For Ireland/EU/UK, requires the **actual item location country** to match the regional marketplace; an item listed on eBay Germany but physically located in the US is not counted as EU evidence.
 - Adds exact-card eBay watch rows keyed to Cardmarket `id_product`; the first live watch is Dragonite V PGO 076.
 - Rejects obvious slabs, graded cards, proxies, custom cards, code cards and lots before using a listing as raw-single evidence.
 - Requires a listing to be absent on **two successful scans** before it can be marked gone; one missing result is not called a sale.
@@ -35,12 +36,12 @@ Cardmarket's public download files do not expose offer-level language, condition
 
 ## eBay regions
 
-The default v0.4 watch uses the following marketplaces:
+The default v0.4 watch uses the following marketplaces and physical-location filters:
 
-- `IRELAND`: `EBAY_IE`
-- `EU`: `EBAY_DE`, `EBAY_FR`, `EBAY_IT`, `EBAY_ES`, `EBAY_NL`, `EBAY_BE`, `EBAY_AT`
-- `UK`: `EBAY_GB`
-- `GLOBAL`: `EBAY_US`
+- `IRELAND`: `EBAY_IE` + item location `IE`
+- `EU`: `EBAY_DE/FR/IT/ES/NL/BE/AT`, each restricted to its corresponding physical item country
+- `UK`: `EBAY_GB` + item location `GB`
+- `GLOBAL`: `EBAY_US` as context only, with no local-EU sourcing implication
 
 Ireland/EU references are normally EUR, UK is GBP and Global is USD. Only EUR Ireland/EU references are currently eligible for automatic comparison against our EUR landed sourcing costs.
 
