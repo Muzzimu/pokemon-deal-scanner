@@ -7,7 +7,7 @@ import os
 import re
 import statistics
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterable
 
@@ -87,6 +87,21 @@ NON_ENGLISH_HINTS = {
     "spanish", "espanol", "español", "korean", "chinese",
 }
 
+# A marketplace site is not the same thing as the physical location of an item.
+# For Ireland/EU/UK evidence, query the marketplace AND force the actual item
+# location to that country.  Global context intentionally has no country filter.
+MARKETPLACE_COUNTRY = {
+    "EBAY_IE": "IE",
+    "EBAY_DE": "DE",
+    "EBAY_FR": "FR",
+    "EBAY_IT": "IT",
+    "EBAY_ES": "ES",
+    "EBAY_NL": "NL",
+    "EBAY_BE": "BE",
+    "EBAY_AT": "AT",
+    "EBAY_GB": "GB",
+}
+
 
 def ensure_ebay_schema(conn) -> None:
     conn.executescript(EBAY_SCHEMA)
@@ -107,7 +122,7 @@ def title_matches(title: str, watch: dict, default_excluded: Iterable[str] | Non
     """Conservative raw-card matcher for an exact watched card.
 
     The watchlist supplies required tokens such as Pokemon name, collector number,
-    and set name.  We deliberately abstain on graded, custom, code-card, lot and
+    and set name. We deliberately abstain on graded, custom, code-card, lot and
     obvious non-English listings rather than trying to rescue ambiguous matches.
     """
     text = _norm(title)
@@ -124,6 +139,18 @@ def title_matches(title: str, watch: dict, default_excluded: Iterable[str] | Non
         if any(hint in text for hint in NON_ENGLISH_HINTS):
             return False
     return True
+
+
+def expected_location_country(marketplace: str) -> str | None:
+    return MARKETPLACE_COUNTRY.get(str(marketplace).upper())
+
+
+def item_location_matches(item: dict, expected_country: str | None) -> bool:
+    """Hard guard against treating a foreign-located item as local/EU evidence."""
+    if expected_country is None:
+        return True
+    actual = str(item.get("item_location_country") or "").upper()
+    return actual == expected_country.upper()
 
 
 def _median(values: Iterable[float]) -> float | None:
@@ -158,8 +185,8 @@ def read_sold_evidence(path: Path) -> list[dict]:
 def choose_reference(asks: list[float], confirmed: list[float], inferred: list[float]) -> dict:
     """Choose a resale reference without pretending asks are sales.
 
-    Confirmed sold evidence is preferred.  Inferred quick-sales require a small
-    sample.  Active asks are only a weak fallback and remain explicitly labelled.
+    Confirmed sold evidence is preferred. Inferred quick-sales require a small
+    sample. Active asks are only a weak fallback and remain explicitly labelled.
     """
     ask_median = _median(asks)
     sold_median = _median(confirmed)
@@ -230,11 +257,14 @@ class EbayBrowseClient:
         self._expires_at = time.time() + int(data.get("expires_in") or 0)
         return self._token
 
-    def search(self, query: str, marketplace: str) -> list[dict]:
+    def search(self, query: str, marketplace: str, *, item_location_country: str | None = None) -> list[dict]:
         token = self._get_token()
+        params = {"q": query, "limit": self.limit}
+        if item_location_country:
+            params["filter"] = f"itemLocationCountry:{item_location_country.upper()}"
         response = self.session.get(
             self.search_url,
-            params={"q": query, "limit": self.limit},
+            params=params,
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-EBAY-C-MARKETPLACE-ID": marketplace,
@@ -293,7 +323,7 @@ def reconcile_listing_state(
     """Upsert today's visible listings and confirm disappearance only after two scans.
 
     A single absence is not called a sale: it may simply have moved outside the
-    Browse API's result window.  The first miss records `missing_since_at`; a later
+    Browse API's result window. The first miss records `missing_since_at`; a later
     successful scan must still miss the listing before it is marked gone.
     """
     seen_ids: set[str] = set()
@@ -529,7 +559,7 @@ def run_ebay_observatory(conn, cfg: dict, watchlist_path: Path, sold_path: Path,
     enabled = bool(ecfg.get("enabled", True)) and client.configured
     today = date.today()
     today_s = today.isoformat()
-    accepted = queries = failures = inferred = 0
+    accepted = queries = failures = inferred = location_rejected = 0
     default_excluded = ecfg.get("default_excluded_tokens") or list(DEFAULT_EXCLUDED)
 
     if enabled:
@@ -542,20 +572,28 @@ def run_ebay_observatory(conn, cfg: dict, watchlist_path: Path, sold_path: Path,
                 continue
             for region, marketplaces in ecfg.get("marketplaces", {}).items():
                 for marketplace in marketplaces:
+                    marketplace = str(marketplace)
+                    region_name = str(region).upper()
+                    location_country = None if region_name == "GLOBAL" else expected_location_country(marketplace)
                     try:
-                        raw = client.search(str(watch["search_query"]), str(marketplace))
+                        raw = client.search(
+                            str(watch["search_query"]), marketplace,
+                            item_location_country=location_country,
+                        )
                         queries += 1
                     except Exception:
                         failures += 1
                         # Never infer a disappearance from a failed API call.
                         continue
-                    matched = [r for r in raw if title_matches(r["title"], watch, default_excluded)]
+                    geo_matched = [r for r in raw if item_location_matches(r, location_country)]
+                    location_rejected += len(raw) - len(geo_matched)
+                    matched = [r for r in geo_matched if title_matches(r["title"], watch, default_excluded)]
                     accepted += len(matched)
                     result = reconcile_listing_state(
                         conn,
                         id_product=pid,
-                        marketplace=str(marketplace),
-                        region=str(region).upper(),
+                        marketplace=marketplace,
+                        region=region_name,
                         listings=matched,
                         seen_date=today_s,
                         confirm_missing_days=confirm_missing,
@@ -572,12 +610,13 @@ def run_ebay_observatory(conn, cfg: dict, watchlist_path: Path, sold_path: Path,
         "api_queries": queries,
         "api_failures": failures,
         "accepted_listing_rows": accepted,
+        "item_location_rejected_rows": location_rejected,
         "new_inferred_quick_sales": inferred,
         "manual_sold_evidence_rows": len(sold_rows),
         "reference_rows": len(refs),
         "strong_reference_rows": sum(1 for r in refs if r["strength"] == "STRONG"),
         "medium_reference_rows": sum(1 for r in refs if r["strength"] == "MEDIUM"),
-        "note": "eBay regions remain separate: Ireland/EU in EUR, UK in GBP, Global in USD; no silent FX mixing.",
+        "note": "Ireland/EU/UK evidence is filtered by actual item location, not merely the eBay site. Regions/currencies stay separate; no silent FX mixing.",
     }
 
 
@@ -604,13 +643,18 @@ def generate_resale_candidates(sourcing_path: Path, reference_path: Path, output
             pid = int(ref.get("id_product") or 0)
         except (TypeError, ValueError):
             continue
+        # Automatic Ireland resale decisions use only local/continental-EU EUR
+        # evidence. UK/Global stay visible as context but never drive a EUR buy.
+        region = str(ref.get("region") or "").upper()
+        if region not in {"IRELAND", "EU"}:
+            continue
         if str(ref.get("currency") or "").upper() != "EUR":
             continue
         if ref.get("chosen_reference") in (None, ""):
             continue
         by_product.setdefault(pid, []).append(ref)
 
-    region_order = {"IRELAND": 0, "EU": 1, "UK": 2, "GLOBAL": 3}
+    region_order = {"IRELAND": 0, "EU": 1}
     strength_order = {"STRONG": 0, "MEDIUM": 1, "WEAK": 2, "VERY_WEAK": 3, "NONE": 9}
     min_spread = float(cfg.get("resale", {}).get("minimum_gross_spread_eur", 2.0))
     min_roi = float(cfg.get("resale", {}).get("minimum_gross_roi_pct", 25.0))
