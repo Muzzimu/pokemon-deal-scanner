@@ -2,8 +2,6 @@ name: Daily Pokemon Deal Scan
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
     # GitHub cron is UTC. Running at both hours plus the local-hour guard below
     # gives ~07:05 Europe/Dublin across daylight-saving changes.
@@ -15,8 +13,6 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.12'
-  # Optional. If this repository secret is absent/blank, the scanner still runs
-  # Cardmarket and simply skips the CardTrader layer.
   CARDTRADER_API_TOKEN: ${{ secrets.CARDTRADER_API_TOKEN }}
 
 jobs:
@@ -29,7 +25,7 @@ jobs:
         id: timecheck
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "push" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           elif [[ "$(TZ=Europe/Dublin date +%H)" == "07" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -45,6 +41,10 @@ jobs:
       - name: Install dependencies
         if: steps.timecheck.outputs.run == 'true'
         run: pip install -r requirements.txt
+
+      - name: Run tests
+        if: steps.timecheck.outputs.run == 'true'
+        run: pytest -q
 
       - name: Restore scanner database state
         if: steps.timecheck.outputs.run == 'true'
