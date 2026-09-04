@@ -1,0 +1,2 @@
+id_product,search_query,required_tokens,excluded_tokens,language,notes
+665687,"Dragonite V 076/078 Pokemon GO","dragonite|076|pokemon go",,en,"PGO076 raw single; exclude slabs/lots via global matcher"
