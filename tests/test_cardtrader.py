@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from deal_scanner.cardtrader import blueprint_rows, near_mint_english, normalize_marketplace
+from deal_scanner.cardtrader import blueprint_rows, near_mint_english, normalize_marketplace, pokemon_expansions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +22,6 @@ def test_cardtrader_nm_filter_ignores_sp():
     stunfisk = [o for o in nm if o.get("id_product") == 900005]
     assert stunfisk
     assert min(o["price_eur"] for o in stunfisk) == 0.29
-    # The fixture contains a €0.18 SP copy that must not be treated as NM.
     assert any(o["price_eur"] == 0.18 and o["condition"] == "Slightly Played" for o in offers)
 
 
@@ -32,3 +31,40 @@ def test_normalized_prices_are_euros():
     zeraora = [o for o in offers if o["blueprint_id"] == 500001]
     assert zeraora
     assert min(o["price_eur"] for o in zeraora) == 0.12
+
+
+def test_pokemon_expansions_use_game_id_5_not_6():
+    payload = [
+        {"id": 3058, "name": "Pokemon GO", "game_id": 5},
+        {"id": 9999, "name": "Other Game", "game_id": 6},
+    ]
+    rows = pokemon_expansions(payload)
+    assert [r["id"] for r in rows] == [3058]
+
+
+def test_current_live_marketplace_shape_is_parsed():
+    payload = {
+        "218021": [{
+            "id": 12345,
+            "price": {"cents": 1536, "currency": "EUR"},
+            "quantity": 2,
+            "properties_hash": {"pokemon_language": "en", "condition": "Near Mint"},
+            "user": {
+                "id": 88,
+                "username": "seller",
+                "country_code": "ES",
+                "can_sell_via_hub": True,
+            },
+            "graded": False,
+            "on_vacation": False,
+        }]
+    }
+    offers = normalize_marketplace(payload, {218021: [665687]})
+    assert len(offers) == 1
+    offer = offers[0]
+    assert offer["id_product"] == 665687
+    assert offer["price_eur"] == 15.36
+    assert offer["language"] == "en"
+    assert offer["condition"] == "Near Mint"
+    assert offer["ct_zero"] is True
+    assert near_mint_english(offers) == offers
