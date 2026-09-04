@@ -1,4 +1,4 @@
-version: "0.3"
+version: "0.4"
 timezone: Europe/Dublin
 
 sources:
@@ -12,6 +12,8 @@ paths:
   output_dir: output
   en_nm_overrides: data/reference/en_nm_overrides.csv
   cardmarket_sourcing_offers: data/reference/cardmarket_sourcing_offers.csv
+  ebay_watchlist: data/reference/ebay_watchlist.csv
+  ebay_sold_evidence: data/reference/ebay_sold_evidence.csv
 
 catalog:
   refresh_weekday: 4
@@ -25,6 +27,7 @@ rules:
   cheap_hit_actionable_en_nm_max_eur: 0.60
   minimum_avg30_for_gap_score_eur: 0.20
   minimum_gap_pct: 20
+  min_product_age_days_for_flip_signal: 14
   max_report_rows: 250
 
   hit_patterns:
@@ -104,3 +107,63 @@ bundles:
   hero_count: 1
   max_generic_discovery_cost_eur: 12.00
   max_validated_en_nm_cost_eur: 16.00
+
+ebay:
+  # Optional live source. If credentials are absent the scanner still runs and can
+  # consume manually recorded sold evidence without inventing a live eBay price.
+  enabled: true
+  app_id_env: EBAY_APP_ID
+  cert_id_env: EBAY_CERT_ID
+  oauth_url: https://api.ebay.com/identity/v1/oauth2/token
+  search_url: https://api.ebay.com/buy/browse/v1/item_summary/search
+  search_limit: 50
+  max_watch_products: 20
+  search_delay_seconds: 0.12
+  timeout_seconds: 20
+  confirm_missing_days: 1
+  quick_sale_max_days: 3
+  sold_window_days: 30
+  strength_window_days: 90
+  display_window_days: 14
+  marketplaces:
+    IRELAND:
+      - EBAY_IE
+    EU:
+      - EBAY_DE
+      - EBAY_FR
+      - EBAY_IT
+      - EBAY_ES
+      - EBAY_NL
+      - EBAY_BE
+      - EBAY_AT
+    UK:
+      - EBAY_GB
+    GLOBAL:
+      - EBAY_US
+  default_excluded_tokens:
+    - psa
+    - bgs
+    - cgc
+    - ace graded
+    - graded
+    - slab
+    - proxy
+    - orica
+    - custom card
+    - metal card
+    - digital
+    - code card
+    - lot of
+    - bundle of
+
+resale:
+  minimum_gross_spread_eur: 2.00
+  minimum_gross_roi_pct: 25.0
+
+history_retention:
+  # Inspired by mature collection trackers: keep detail where it matters without
+  # allowing the cached SQLite database to grow without bound.
+  cardmarket_daily_days: 90
+  cardmarket_weekly_until_days: 365
+  cardtrader_raw_offer_days: 30
+  ebay_gone_listing_days: 30
