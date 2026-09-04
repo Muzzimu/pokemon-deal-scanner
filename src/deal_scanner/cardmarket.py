@@ -4,7 +4,7 @@ import json
 import shutil
 import tempfile
 import time
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Iterable
 
@@ -21,7 +21,6 @@ def _extract_rows(payload, preferred_keys: Iterable[str]) -> list[dict]:
         value = payload.get(key)
         if isinstance(value, list):
             return [r for r in value if isinstance(r, dict)]
-    # Last-resort: choose the largest list-of-dicts at root level.
     candidates = []
     for key, value in payload.items():
         if isinstance(value, list) and (not value or isinstance(value[0], dict)):
@@ -43,6 +42,31 @@ def read_price_guide(path: str | Path) -> tuple[list[dict], str | None]:
     created_at = payload.get("createdAt") if isinstance(payload, dict) else None
     rows = _extract_rows(payload, ("priceGuides", "priceGuide", "prices", "products", "items", "data"))
     return rows, created_at
+
+
+def filter_price_rows_to_catalog(rows: Iterable[dict], valid_product_ids: Iterable[int]) -> tuple[list[dict], int]:
+    """Drop stale/retired price-guide IDs that are absent from the current catalogue.
+
+    Cardmarket's public price guide can temporarily retain products that no longer
+    exist in the current singles catalogue.  Those rows are useful neither for
+    the current scan nor for a foreign-keyed snapshot table, so filtering them is
+    the stable core behavior rather than a CI-only monkeypatch.
+    """
+    valid = {int(x) for x in valid_product_ids}
+    kept: list[dict] = []
+    skipped = 0
+    for row in rows:
+        pid = row.get("idProduct", row.get("id_product", row.get("id")))
+        try:
+            pid_i = int(pid)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+        if pid_i in valid:
+            kept.append(row)
+        else:
+            skipped += 1
+    return kept, skipped
 
 
 def _next_archive_path(directory: Path, stem: str, snapshot_date: date) -> Path:
@@ -68,7 +92,7 @@ def download(url: str, *, archive_dir: Path | None, stem: str, snapshot_date: da
                 url,
                 stream=True,
                 timeout=timeout,
-                headers={"User-Agent": "pokemon-deal-scanner/0.1 (+personal research)"},
+                headers={"User-Agent": "pokemon-deal-scanner/0.4 (+personal research)"},
             ) as r:
                 r.raise_for_status()
                 if archive_dir is not None:
@@ -86,7 +110,7 @@ def download(url: str, *, archive_dir: Path | None, stem: str, snapshot_date: da
                 if archive_dir is not None:
                     temp_target.replace(target)
                 return target
-        except Exception as exc:  # network errors need retry
+        except Exception as exc:
             last_exc = exc
             if attempt < retries:
                 time.sleep(2 ** (attempt - 1))
