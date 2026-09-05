@@ -177,13 +177,16 @@ def main() -> int:
         else:
             cardtrader_status = {"enabled": False, "reason": f"missing {cfg['cardtrader']['token_env']}"}
 
-    generate_reports(conn, cfg, output_dir)
-    ct_date = latest_cardtrader_snapshot_date(conn)
-    seller_rows = build_seller_baskets(conn, ct_date, cfg)
-    write_seller_baskets(output_dir / "seller_baskets.csv", seller_rows)
+    # Build the Ireland-eligible Cardmarket sourcing layer before scoring so the
+    # robust EN/NM median floor is available in this same run, not one day later.
     sourcing_status = generate_cardmarket_sourcing_report(
         conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
     )
+    generate_reports(conn, cfg, output_dir)
+
+    ct_date = latest_cardtrader_snapshot_date(conn)
+    seller_rows = build_seller_baskets(conn, ct_date, cfg)
+    write_seller_baskets(output_dir / "seller_baskets.csv", seller_rows)
 
     if args.skip_ebay:
         ebay_status = {"enabled": False, "reason": "--skip-ebay"}
