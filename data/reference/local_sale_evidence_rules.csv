@@ -1,0 +1,8 @@
+evidence_type,sale_confidence,realized_price_confidence,rule
+platform_item_sold_banner,very_high,unknown_unless_offer_visible,"Adverts page explicitly states 'This item has been sold'. Treat as confirmed sale. Do not assume asking price equals realized price."
+platform_item_sold_banner_plus_visible_offer,very_high,high,"Adverts page explicitly states item sold and a concrete accepted offer is visible. Treat accepted offer as likely realized price unless later contradictory comments exist."
+seller_description_marked_sold,high,unknown,"Seller explicitly marks item/subset Sold in description. Strong sale evidence, but realized price unknown unless separately shown."
+accepted_offer_no_sold_banner,medium,medium,"Concrete offer accepted but no platform sold state. Do not treat as confirmed sale; PM/DM acceptance can later fall through."
+accepted_for_dm,low,unknown,"Contact/PM placeholder only. Not sale evidence."
+listing_disappeared,low,unknown,"Disappearance alone is not sale evidence; could be withdrawn, expired, relisted or deleted."
+active_ask,none,none,"Asking price only. Use as local retail ceiling/behavioural reference, not realized sale value."
