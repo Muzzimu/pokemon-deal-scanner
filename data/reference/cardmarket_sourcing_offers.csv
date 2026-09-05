@@ -1,4 +1,8 @@
 id_product,article_price_eur,shipping_total_eur,shipping_allocation_eur,seller,seller_rating,seller_sales,ships_to_ireland,language,condition,checked_at,source,notes
 665687,9.00,1.55,0.775,Andys-Pokeshop,Very Good,23000,yes,en,NM,2026-09-04,Cardmarket screenshot,"Shipping is the €1.55 two-card basket total; €0.775 is a simple 50/50 allocation for the Dragonite pair test."
-665687,7.60,,,Tjanpf,Unrated,3,yes,en,NM,2026-09-04,Cardmarket screenshot,"Cart was active for Ireland; shipping amount was not visible, so landed cost must be verified before buying."
+665687,7.60,,,Tjanpf,Unrated,3,yes,en,NM,2026-09-05,Cardmarket screenshot,"Active Ireland cart but only 3 seller sales; keep as a visible outlier, not a robust planning-floor input. Shipping amount not visible."
 665687,7.95,3.65,1.825,Quutamo,Outstanding,180,yes,en,EX,2026-09-04,Cardmarket screenshot,"Two-card Finland basket; PGO076 is EX rather than NM, so excluded by the strict sourcing rule."
+665687,8.50,,,The-Yosa-Shop,,36,yes,en,NM,2026-09-05,Cardmarket screenshot,"Active cart to Ireland in the filtered PGO076 offer list; shipping not yet checked."
+665687,8.90,,,Les007,,11,yes,en,NM,2026-09-05,Cardmarket screenshot,"Active cart to Ireland in the filtered PGO076 offer list; shipping not yet checked."
+665687,9.00,3.37,,Randyheinderson,,264,yes,en,NM,2026-09-05,Cardmarket screenshots,"Active Ireland cart; earlier two-card basket showed €3.37 total shipping. No single-card allocation assumed here."
+665687,9.00,,,GlennTheMan,,132,yes,en,NM,2026-09-05,Cardmarket screenshot,"Active cart to Ireland; listing note says ask for photos. Shipping not yet checked."
