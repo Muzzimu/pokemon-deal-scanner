@@ -1,0 +1,55 @@
+name: Temporary Squirtle Team Rocket Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tmp_squirtle_diag.yml'
+
+permissions:
+  contents: read
+
+env:
+  CARDTRADER_API_TOKEN: ${{ secrets.CARDTRADER_API_TOKEN }}
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Check Squirtle Team Rocket offers
+        run: |
+          python - <<'PY'
+          import json, os, requests
+          bp=129485
+          h={'Authorization':f"Bearer {os.environ['CARDTRADER_API_TOKEN']}",'Accept':'application/json'}
+          r=requests.get('https://api.cardtrader.com/api/v2/marketplace/products',params={'blueprint_id':bp,'language':'en'},headers=h,timeout=60)
+          r.raise_for_status()
+          p=r.json()
+          offers=p.get(str(bp),[]) if isinstance(p,dict) else p
+          rows=[]
+          for x in offers:
+              props=x.get('properties_hash') or x.get('properties') or {}
+              price=x.get('price') or {}
+              cents=price.get('cents') if isinstance(price,dict) else None
+              user=x.get('user') or {}
+              rows.append({
+                'price_eur': None if cents is None else cents/100,
+                'condition': props.get('condition'),
+                'language': props.get('pokemon_language') or props.get('language'),
+                'first_edition': props.get('first_edition'),
+                'seller': user.get('username') or user.get('name'),
+                'country': user.get('country_code') or user.get('country'),
+                'quantity': x.get('quantity'),
+                'ct_zero': bool(user.get('can_sell_via_hub')),
+                'graded': bool(x.get('graded')),
+                'vacation': bool(x.get('on_vacation')),
+              })
+          rows=[x for x in rows if str(x.get('language')).lower() in {'en','english'} and str(x.get('condition')).lower().replace('_',' ') in {'near mint','nm'} and not x['graded'] and not x['vacation']]
+          rows.sort(key=lambda x: 999999 if x['price_eur'] is None else x['price_eur'])
+          print(json.dumps({'blueprint_id':bp,'english_nm_rows':len(rows),'offers':rows[:20]},indent=2))
+          PY
