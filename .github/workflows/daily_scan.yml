@@ -2,8 +2,6 @@ name: Daily Pokemon Deal Scan
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
     # GitHub cron is UTC. We deliberately avoid :00/:05, when scheduled Actions
     # are more likely to be delayed under platform load. Two attempts are made
@@ -47,7 +45,7 @@ jobs:
         id: timecheck
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "push" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "reason=manual" >> "$GITHUB_OUTPUT"
           elif [[ "${{ steps.clock.outputs.hour }}" != "07" ]]; then
