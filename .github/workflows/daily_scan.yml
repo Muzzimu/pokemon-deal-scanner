@@ -2,11 +2,14 @@ name: Daily Pokemon Deal Scan
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
   schedule:
-    # GitHub cron is UTC. Running at both hours plus the local-hour guard below
-    # gives ~07:05 Europe/Dublin across daylight-saving changes.
-    - cron: '5 6 * * *'
-    - cron: '5 7 * * *'
+    # GitHub cron is UTC. We deliberately avoid :00/:05, when scheduled Actions
+    # are more likely to be delayed under platform load. Two attempts are made
+    # during the Dublin 07:00 hour; a daily marker ensures only one full scan.
+    # The 06/07 UTC pair handles Irish daylight-saving time automatically.
+    - cron: '17,47 6,7 * * *'
 
 permissions:
   contents: read
@@ -24,17 +27,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check Dublin local hour
+      - name: Resolve Dublin clock
+        id: clock
+        shell: bash
+        run: |
+          echo "day=$(TZ=Europe/Dublin date +%F)" >> "$GITHUB_OUTPUT"
+          echo "hour=$(TZ=Europe/Dublin date +%H)" >> "$GITHUB_OUTPUT"
+          echo "time=$(TZ=Europe/Dublin date +%H:%M:%S)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore today's successful-run marker
+        id: daily_marker
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .daily-scan-marker
+          key: pokemon-daily-scan-${{ steps.clock.outputs.day }}
+
+      - name: Decide whether to run
         id: timecheck
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "push" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$(TZ=Europe/Dublin date +%H)" == "07" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
+            echo "reason=manual-or-validation" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ steps.clock.outputs.hour }}" != "07" ]]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=outside-dublin-07-hour" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ steps.daily_marker.outputs.cache-hit }}" == "true" ]]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=already-ran-today" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=scheduled-primary-or-fallback" >> "$GITHUB_OUTPUT"
           fi
+          echo "Dublin time: ${{ steps.clock.outputs.time }}; decision written to outputs"
 
       - uses: actions/setup-python@v5
         if: steps.timecheck.outputs.run == 'true'
@@ -86,3 +112,18 @@ jobs:
             output/*.csv
             output/*.json
           retention-days: 30
+
+      - name: Create today's success marker
+        if: success() && github.event_name == 'schedule' && steps.timecheck.outputs.run == 'true'
+        shell: bash
+        run: |
+          mkdir -p .daily-scan-marker
+          echo "run_id=${{ github.run_id }}" > ".daily-scan-marker/${{ steps.clock.outputs.day }}.txt"
+          echo "dublin_time=${{ steps.clock.outputs.time }}" >> ".daily-scan-marker/${{ steps.clock.outputs.day }}.txt"
+
+      - name: Save today's successful-run marker
+        if: success() && github.event_name == 'schedule' && steps.timecheck.outputs.run == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .daily-scan-marker
+          key: pokemon-daily-scan-${{ steps.clock.outputs.day }}
