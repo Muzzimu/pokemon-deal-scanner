@@ -75,6 +75,11 @@ sourcing:
   required_condition: NM
   required_destination: Ireland
   seller_risk_max_penalty_eur: 1.50
+  # Planning floor: median of the cheapest N eligible offers after filtering out
+  # very small seller histories. Individual low offers are still shown separately.
+  robust_floor_sample_size: 3
+  robust_floor_min_samples: 2
+  robust_floor_min_seller_sales: 10
 
 seller_baskets:
   max_unit_price_eur: 0.70
