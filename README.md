@@ -60,8 +60,14 @@ The eBay Browse API is optional. Configure `EBAY_APP_ID` and `EBAY_CERT_ID` as r
 - `output/pgo076_test.json`
 - `output/scanner_status.json`
 
+## Durable project context
+
+Business strategy, standing interpretation rules, local Irish benchmark policy, bundle concepts, deal-evaluation conventions, and conversation-continuity instructions are preserved in [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md).
+
+Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `config.yaml`, the relevant `data/reference/` files, and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
+
 ## Design inspiration
 
 v0.4 reviewed several open-source Pokémon / TCG projects for architecture ideas, especially European price histories, source confidence, listing-state tracking and bounded historical storage. The implementation in this repository is original; code was not copied from repositories that do not publish a reuse licence. See `docs/INSPIRATION.md`.
 
-The GitHub Actions workflow runs daily at about 07:05 Europe/Dublin and can also be run manually.
+The GitHub Actions workflow runs once per day during the 07:00 Europe/Dublin hour, using redundant scheduled attempts plus a daily success marker, and can also be run manually.
