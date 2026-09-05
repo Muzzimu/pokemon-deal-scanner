@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import math
+import statistics
 from pathlib import Path
 
 
@@ -22,7 +23,8 @@ OUTPUT_FIELDS = [
     "allocated_landed_cost_eur", "seller", "seller_rating", "seller_sales",
     "seller_confidence", "seller_risk_penalty_eur", "risk_adjusted_article_eur",
     "risk_adjusted_landed_eur", "ships_to_ireland", "language", "condition",
-    "decision", "eligibility_reason", "checked_at", "source", "notes",
+    "robust_en_nm_floor_eur", "robust_floor_sample_size", "robust_floor_candidate_offers",
+    "robust_floor_method", "decision", "eligibility_reason", "checked_at", "source", "notes",
 ]
 
 
@@ -87,6 +89,84 @@ def _product_lookup(conn, product_id: int) -> dict:
         "expansion_name": None,
         "number": None,
     }
+
+
+def _robust_floors(rows: list[dict], cfg: dict) -> dict[int, dict]:
+    """Return a repeatable Cardmarket floor, not the single cheapest outlier.
+
+    The robust floor is the median of the cheapest N eligible EN/NM offers that
+    ship to Ireland and meet a minimum seller-history threshold. Tiny/new sellers
+    remain visible/actionable individually, but cannot pull the planning floor down.
+    """
+    scfg = cfg.get("sourcing", {})
+    sample_size = max(1, int(scfg.get("robust_floor_sample_size", 3)))
+    min_samples = max(1, int(scfg.get("robust_floor_min_samples", 2)))
+    min_sales = max(0, int(scfg.get("robust_floor_min_seller_sales", 10)))
+    grouped: dict[int, list[dict]] = {}
+
+    for row in rows:
+        if row.get("decision") == "INELIGIBLE":
+            continue
+        article = _float(row.get("article_price_eur"))
+        if article is None:
+            continue
+        if _rating_key(row.get("seller_rating")) == "bad":
+            continue
+        if _int(row.get("seller_sales")) < min_sales:
+            continue
+        try:
+            pid = int(row.get("id_product") or 0)
+        except (TypeError, ValueError):
+            continue
+        if pid <= 0:
+            continue
+        grouped.setdefault(pid, []).append(row)
+
+    floors: dict[int, dict] = {}
+    for pid, candidates in grouped.items():
+        candidates = sorted(candidates, key=lambda r: float(r["article_price_eur"]))
+        chosen = candidates[:sample_size]
+        if len(chosen) < min_samples:
+            continue
+        prices = [float(r["article_price_eur"]) for r in chosen]
+        floors[pid] = {
+            "robust_en_nm_floor_eur": round(float(statistics.median(prices)), 2),
+            "robust_floor_sample_size": len(chosen),
+            "robust_floor_candidate_offers": len(candidates),
+            "robust_floor_method": f"median_cheapest_{sample_size}_eligible_min_{min_sales}_sales",
+            "checked_at": max((str(r.get("checked_at") or "") for r in chosen), default=""),
+            "sellers": [str(r.get("seller") or "") for r in chosen],
+        }
+    return floors
+
+
+def _persist_robust_floors(conn, floors: dict[int, dict]) -> None:
+    values = []
+    for pid, floor in floors.items():
+        notes = (
+            f"{floor['robust_floor_method']}; sample={floor['robust_floor_sample_size']}; "
+            f"eligible_candidates={floor['robust_floor_candidate_offers']}; "
+            f"sellers={','.join(floor['sellers'])}"
+        )
+        values.append((
+            int(pid), float(floor["robust_en_nm_floor_eur"]),
+            floor.get("checked_at") or "", "Cardmarket robust median", notes,
+        ))
+    if not values:
+        return
+    conn.executemany(
+        """
+        INSERT INTO cardmarket_en_nm_overrides(id_product,en_nm_floor_eur,checked_at,source,notes)
+        VALUES(?,?,?,?,?)
+        ON CONFLICT(id_product) DO UPDATE SET
+          en_nm_floor_eur=excluded.en_nm_floor_eur,
+          checked_at=excluded.checked_at,
+          source=excluded.source,
+          notes=excluded.notes
+        """,
+        values,
+    )
+    conn.commit()
 
 
 def analyze_sourcing_offers(conn, cfg: dict, rows: list[dict]) -> list[dict]:
@@ -176,6 +256,14 @@ def analyze_sourcing_offers(conn, cfg: dict, rows: list[dict]) -> list[dict]:
             "notes": raw.get("notes") or "",
         })
 
+    floors = _robust_floors(out, cfg)
+    for row in out:
+        floor = floors.get(int(row["id_product"]))
+        row["robust_en_nm_floor_eur"] = None if not floor else floor["robust_en_nm_floor_eur"]
+        row["robust_floor_sample_size"] = 0 if not floor else floor["robust_floor_sample_size"]
+        row["robust_floor_candidate_offers"] = 0 if not floor else floor["robust_floor_candidate_offers"]
+        row["robust_floor_method"] = "" if not floor else floor["robust_floor_method"]
+
     order = {
         "STANDALONE_BUY": 0,
         "BUNDLE_BUY": 1,
@@ -201,11 +289,15 @@ def write_sourcing_report(path: Path, rows: list[dict]) -> None:
 
 def generate_cardmarket_sourcing_report(conn, cfg: dict, reference_path: Path, output_path: Path) -> dict:
     rows = analyze_sourcing_offers(conn, cfg, read_sourcing_offers(reference_path))
+    floors = _robust_floors(rows, cfg)
+    _persist_robust_floors(conn, floors)
     write_sourcing_report(output_path, rows)
     return {
         "evidence_rows": len(rows),
         "eligible_en_nm_ireland": sum(1 for r in rows if r["decision"] != "INELIGIBLE"),
         "confirmed_landed_rows": sum(1 for r in rows if r["allocated_landed_cost_eur"] is not None and r["decision"] != "INELIGIBLE"),
+        "robust_floor_products": len(floors),
+        "robust_floor_method": f"median of cheapest {int(cfg.get('sourcing', {}).get('robust_floor_sample_size', 3))} eligible offers after seller-history filter",
         "standalone_buy_rows": sum(1 for r in rows if r["decision"] == "STANDALONE_BUY"),
         "bundle_buy_rows": sum(1 for r in rows if r["decision"] == "BUNDLE_BUY"),
         "verify_landed_rows": sum(1 for r in rows if r["decision"] == "VERIFY_LANDED"),
