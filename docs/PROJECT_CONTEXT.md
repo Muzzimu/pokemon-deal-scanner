@@ -1,6 +1,6 @@
 # Pokémon Deal Scanner — Durable Project Context
 
-Last consolidated: 2026-09-05
+Last consolidated: 2026-09-06
 
 This file is the durable carry-forward memory for the Pokémon TCG sourcing/resale project. It exists so that important decisions agreed in ChatGPT conversations do not disappear when a chat is replaced, shared, truncated, or moved.
 
@@ -83,6 +83,8 @@ Adverts.ie tracking must remain manual/public-index based where required by the 
 
 - **Rocco_jr — Adverts member 1462668**: use asking prices as a **high-retail Irish ceiling**, not fair market value. Give substantially more weight to actual offers, accepted offers with corroboration, sold-marked items, and other evidence of what buyers really pay.
 - **PokeDub — Adverts member 2946433**: local singles/master-set/part-out benchmark. Preserve the existing evidence rules showing that PM/DM acceptance can fall through.
+- **batch91 — Adverts member 735477**: high-priority full-binder/value benchmark. His €20 full binders produced immediate demand and one has a visible €20 accepted offer plus later sold evidence; later comparable binders were repriced to €39. Treat ≤€25 as a strong-buy alert for comparable binders, €26–32 as attractive, and ~€39 as fair/watch until actual sale evidence establishes the higher level.
+- **mini4real2k6 — Adverts member 615297**: direct kids/starter-bundle competitor benchmark. Current product is 50 English pack-fresh cards for €7 with 1 V/EX, 1 reverse holo, 3 holo rares, 5 Trainers, 10 Energy and 30 C/UC, no duplicates. Seller has repeat buyer interest and quoted two bundles for €13 including postage; use this as a key test of whether our planned €10 50-card bundle adds enough value through theme, stronger hero-card appeal, fewer filler Energy cards, better presentation, or convenience. Raw-bulk asks of €6/100 and €10/200 C/UC are useful input-value ceilings, not proof of rapid sale velocity.
 - **PW Card Co — Dublin pop-ups**: use visible sticker prices as face-to-face Irish retail-ceiling evidence and occasional sourcing leads. In-person inspection/no postage can justify a modest premium over Cardmarket, not an unlimited one. Keep English/Japanese comparisons separate.
 
 When possible, compare local Irish evidence against Cardmarket EN/NM and European eBay evidence rather than relying on one venue in isolation.
@@ -100,6 +102,8 @@ Standing concepts from the original business discussion:
 - benchmark against competing local/online bulk bundles before assuming €10 is justified.
 
 A bundle should offer a reason to choose it over generic bulk: recognizable Pokémon, coherent theme, nicer presentation, or a visibly attractive hero card.
+
+The mini4real2k6 benchmark means a generic 50-card mix with a basic V/ex and a few foils is already available locally around €7. A €10 product should therefore not simply imitate that composition. Prefer a clear differentiator such as a named theme, recognizable hero Pokémon, visibly nicer packaging, reduced Energy/filler content, or a stronger guaranteed hit.
 
 ### Themed mini-bundles
 
@@ -169,7 +173,7 @@ Popularity is a resale factor, not proof of profitability. A popular character b
 These are context, not permanent market prices:
 
 - The project has previously sourced 50-card lots around €5 (and another around €5 + €2.50 postage), showing that inexpensive bulk inventory is achievable.
-- A local competing example was observed offering 50 English cards including a V/ex plus holo/reverse-holo content around €7, with two bundles negotiated around €13 including postage. This is useful calibration for the proposed €10 50-card product: our bundle should have a clearer theme, presentation, or hero-card advantage.
+- **mini4real2k6 (Adverts member 615297)** is the identified local competitor behind the observed ~€7 50-card benchmark: 1 V/EX, 1 reverse holo, 3 holo rares, 5 Trainers, 10 Energy and 30 C/UC, all English/pack-fresh with no duplicates. Two bundles were quoted at €13 including postage, and multiple later buyer interactions/feedback support genuine demand. This is the clearest current calibration for the proposed €10 50-card product: ours should have a stronger theme, presentation, hero-card appeal, or lower filler content rather than competing as undifferentiated bulk.
 - A Marnie Premium Tournament Collection was acquired around €17 as a one-unit experiment; sealed-vs-open should be decided from current product economics rather than treated as a standing investment rule.
 
 Do not reuse these historical prices as current market quotes without fresh verification.
