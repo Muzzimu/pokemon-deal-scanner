@@ -56,7 +56,7 @@ Useful as a manual corroboration source where a snapshot already exists. Do not 
 
 ## Controlled test results — 2026-09-06
 
-Known sold batch91 listings tested:
+Known sold batch91 listings initially tested:
 - `40758551`
 - `40926024`
 - `40926025`
@@ -85,37 +85,65 @@ Result:
 
 This materially lowers confidence that public web archives will recover recent Adverts sold listings at useful hit rates.
 
-### Search-index test
+### Search-index test — expanded sample
 
-A normal third-party web-search index was tested for the same known IDs.
+A third-party web-search index was tested against known historical listings already present in `data/reference/local_seller_history.csv`.
 
-Results:
-- `40926024` recovered exactly, including title, seller (`batch91`), description and €20 asking price.
-- `40926025` recovered exactly, including title, seller, €20 asking price and offer/comment evidence.
-- `40758551` was not recovered by exact ID/title search in the tested index.
+The normalized sample is stored in `data/reference/adverts_search_index_probe.csv`.
 
-Observed hit rate in this tiny controlled sample: **2/3 exact listings (67%)**.
+Current sample:
+- 13 known listings tested
+- 10 recovered as an exact listing page
+- 2 recovered through an exact listing/title entry on an Adverts results page
+- 1 not recovered (`40758551`, whose generic title is simply `Pokemon Cards`)
 
-Important: this is not yet a statistically meaningful hit rate, but it is much more promising than the 0/3 public-archive result.
+Observed useful-hit rate: **12/13 = 92%**.
+Observed exact-page hit rate: **10/13 = 77%**.
+
+This is still a small and non-random sample, so it must not be treated as a production reliability estimate. However, it is materially more promising than the public-archive route.
+
+Important search behavior discovered:
+- searching only the numeric listing ID can miss pages;
+- **exact or distinctive listing titles perform much better**;
+- seller + title is a useful fallback;
+- numeric ID + seller + title is useful for generic titles;
+- generic titles such as `Pokemon Cards` are the hardest case;
+- both `www.adverts.ie` and `touch.adverts.ie` pages appear in search indexes.
+
+Examples recovered from the search index include:
+- `40926024`: exact batch91 page, €20 ask and description;
+- `40926025`: exact batch91 page, €20 ask plus offer/comment evidence;
+- `36964449`: exact PokeDub page with €600/€750 offers and later `Still Available` evidence;
+- `37253325`: exact PokeDub page with rejected €125/€140 offers and DM-placeholder acceptance;
+- `38889838`: exact competitor bundle page including the 2 bundles for €13 delivered comment;
+- `40758540`: exact batch91 €25 binder page.
+
+A `touch.adverts.ie` search result was also observed for a sold Pokémon card page showing the explicit message `This item has been sold. Here are some similar ads...`. This confirms that third-party search indexes can retain sold-state pages even where the original item body has been replaced by a sold fallback page.
 
 ## Current technical direction
 
 Prioritize **third-party search-index enrichment** over traditional web archives.
 
-Proposed lookup order for known listing IDs:
-1. third-party search index exact-ID query
-2. alternate query using seller + title + known listing ID
-3. Wayback Availability/CDX exact URL
-4. Common Crawl exact URL
-5. Arquivo.pt exact URL
-6. archive.today manual corroboration when useful
+Proposed query order for a known listing:
+1. exact distinctive listing title;
+2. exact title + seller;
+3. listing ID + seller + title;
+4. known canonical URL / ID query;
+5. touch-host variant query;
+6. Wayback Availability/CDX exact URL;
+7. Common Crawl exact URL;
+8. Arquivo.pt exact URL;
+9. archive.today manual corroboration when useful.
 
 The repository now contains:
 - `scripts/probe_adverts_archives.py`
 - `scripts/probe_adverts_touch_archives.py`
 - `scripts/probe_adverts_search_index.py`
+- `data/reference/adverts_search_index_probe.csv`
 
-The search-index script is prepared for Firecrawl API search if `FIRECRAWL_API_KEY` is configured as a GitHub Actions secret. A ChatGPT Firecrawl plugin connection is separate from a GitHub Actions API secret and should not be assumed to populate that secret automatically.
+The search-index script is prepared for Firecrawl API search if `FIRECRAWL_API_KEY` is configured as a GitHub Actions secret. Firecrawl's documented v2 Search endpoint supports web search, domain restriction and result snippets/metadata, which fits this use case.
+
+A ChatGPT Firecrawl plugin connection is separate from a GitHub Actions API secret and should not be assumed to populate that secret automatically.
 
 ## URL-variant probe
 
@@ -126,6 +154,17 @@ Because historical Adverts pages may have been indexed under older hosts, the pr
 - HTTP and HTTPS
 
 This remains third-party archive lookup only; the probe does not request those Adverts URLs directly.
+
+## Better production design: observe before and after sale
+
+Trying to reconstruct a listing only after it is sold is inherently fragile. A better design is to query third-party search indexes periodically for **known tracked listings while they are active**, storing only normalized evidence such as ask, seller, visible offers/comments and the indexed timestamp.
+
+Later, when a third-party index shows a sold-state page or other independent sold evidence appears, the scanner can reconcile the earlier active snapshot with the later sold state.
+
+This can turn:
+- active ask snapshot + accepted concrete offer + later sold state
+
+into much stronger local realized-price evidence than attempting to recover everything from a sold fallback page after the fact.
 
 ## Proposed evidence pipeline
 
@@ -167,13 +206,10 @@ Search snippets that show a concrete accepted offer plus later independent sold-
 
 ## Next technical test
 
-Expand the controlled sample to at least 20 known historical Adverts listing IDs already present in `data/reference/local_seller_history.csv` and compare:
-- exact-ID search-index hit rate
-- seller+title query hit rate
-- archive hit rate
-- fields recovered (ask, offer, seller, comments, sold marker)
-
-If search-index hit rate remains useful, build a separate `search_index_enrichment` component with strict source labelling and confidence rules.
+1. Finish the touch/hostname archive variant run.
+2. Run the Firecrawl search-index probe on the known sample once a GitHub Actions `FIRECRAWL_API_KEY` secret is available.
+3. Expand to at least 20 known historical Adverts listings and compare exact-title, seller+title, ID+seller+title and touch-host query hit rates.
+4. If Firecrawl reproduces the strong manual search-index hit rate, build a separate `search_index_enrichment` component with strict source labelling and confidence rules.
 
 ## References
 
@@ -181,3 +217,4 @@ If search-index hit rate remains useful, build a separate `search_index_enrichme
 - Internet Archive Wayback CDX / Availability APIs.
 - Common Crawl public CDXJ/URL indexes.
 - Arquivo.pt Memento/TimeMap API.
+- Firecrawl v2 Search API documentation.
