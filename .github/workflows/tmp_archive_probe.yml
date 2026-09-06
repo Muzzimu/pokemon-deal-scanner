@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/tmp_archive_probe.yml'
+      - 'scripts/probe_adverts_archives.py'
 
 permissions:
   contents: read
