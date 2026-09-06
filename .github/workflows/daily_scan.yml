@@ -4,13 +4,20 @@ on:
   workflow_dispatch:
   schedule:
     # GitHub cron is UTC. We deliberately avoid :00/:05, when scheduled Actions
-    # are more likely to be delayed under platform load. Two attempts are made
-    # during the Dublin 07:00 hour; a daily marker ensures only one full scan.
-    # The 06/07 UTC pair handles Irish daylight-saving time automatically.
+    # are more likely to be delayed under platform load. The 06/07 UTC pair handles
+    # Irish daylight-saving time; the runtime guard allows any delayed scheduled
+    # job to execute once Dublin has reached 07:00, while the daily marker prevents
+    # duplicate full scans.
     - cron: '17,47 6,7 * * *'
 
 permissions:
   contents: read
+
+# Serialize redundant scheduled attempts. A later attempt waits for the earlier
+# one, then restores the daily marker and skips if a full scan already succeeded.
+concurrency:
+  group: pokemon-daily-scan-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   PYTHON_VERSION: '3.12'
@@ -48,15 +55,15 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "reason=manual" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ steps.clock.outputs.hour }}" != "07" ]]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "reason=outside-dublin-07-hour" >> "$GITHUB_OUTPUT"
           elif [[ "${{ steps.daily_marker.outputs.cache-hit }}" == "true" ]]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "reason=already-ran-today" >> "$GITHUB_OUTPUT"
+          elif (( 10#${{ steps.clock.outputs.hour }} < 7 )); then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=before-dublin-07-hour" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "reason=scheduled-primary-or-fallback" >> "$GITHUB_OUTPUT"
+            echo "reason=scheduled-primary-fallback-or-delayed" >> "$GITHUB_OUTPUT"
           fi
           echo "Dublin time: ${{ steps.clock.outputs.time }}; decision written to outputs"
 
