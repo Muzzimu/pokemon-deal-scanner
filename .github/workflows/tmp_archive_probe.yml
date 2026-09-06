@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -18,15 +21,19 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - name: Probe canonical third-party archives
-        run: python scripts/probe_adverts_archives.py
-      - name: Probe touch and hostname variants
+      - name: Probe touch and hostname archive variants
         run: python scripts/probe_adverts_touch_archives.py
+      - name: Probe third-party search index
+        if: env.FIRECRAWL_API_KEY != ''
+        run: python scripts/probe_adverts_search_index.py
+      - name: Explain skipped search-index probe
+        if: env.FIRECRAWL_API_KEY == ''
+        run: echo 'FIRECRAWL_API_KEY is not configured; archive-variant probe still ran.'
       - name: Upload probe results
         uses: actions/upload-artifact@v4
         with:
           name: adverts-archive-probe-${{ github.run_id }}
           path: |
-            output/archive_probe/*
             output/archive_probe_touch/*
+            output/search_index_probe/*
           retention-days: 14
