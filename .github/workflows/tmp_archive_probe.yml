@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - '.github/workflows/tmp_archive_probe.yml'
-      - 'scripts/probe_adverts_archives.py'
 
 permissions:
   contents: read
@@ -19,11 +18,15 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - name: Probe third-party archives
+      - name: Probe canonical third-party archives
         run: python scripts/probe_adverts_archives.py
+      - name: Probe touch and hostname variants
+        run: python scripts/probe_adverts_touch_archives.py
       - name: Upload probe results
         uses: actions/upload-artifact@v4
         with:
           name: adverts-archive-probe-${{ github.run_id }}
-          path: output/archive_probe/*
+          path: |
+            output/archive_probe/*
+            output/archive_probe_touch/*
           retention-days: 14
