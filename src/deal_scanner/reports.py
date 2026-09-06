@@ -13,7 +13,7 @@ COMMON_FIELDS = [
     "product_age_days", "low", "trend", "avg1", "avg7", "avg30",
     "cm_en_nm_floor", "cm_en_nm_checked_at",
     "ct_en_nm_floor", "ct_visible_units", "ct_visible_sellers", "ct_zero_units",
-    "hist_low", "hist_days", "gap_pct", "volatility_30d",
+    "hist_low", "hist_days", "generic_gap_pct", "gap_pct", "volatility_30d",
     "popularity_score", "best_validated_sourcing_price", "deal_score", "status",
 ]
 
@@ -96,10 +96,16 @@ def build_top_flips(rows: list[dict], cfg: dict) -> list[dict]:
     min_age = int(cfg["rules"].get("min_product_age_days_for_flip_signal", 0))
     out = []
     for r in rows:
-        # New releases often have unstable day-1 lows/averages.  Do not call the
-        # launch volatility a "flip signal" until the product has aged enough.
+        # New releases often have unstable day-1 lows/averages. Do not call the
+        # launch volatility a flip signal until the product has aged enough.
         age = r.get("product_age_days")
         if age is not None and age < min_age:
+            continue
+
+        # v0.5 guardrail: a top-flip candidate must have validated EN/NM
+        # acquisition evidence. Generic Cardmarket low (which may be Italian or
+        # another language/condition) is discovery-only and cannot qualify a flip.
+        if r.get("best_validated_sourcing_price") is None:
             continue
         if (r.get("avg30") or 0) < min_avg:
             continue
@@ -167,7 +173,7 @@ def generate_reports(conn, cfg: dict, output_dir: Path) -> dict:
         "new_product_signal_guard_days": int(cfg["rules"].get("min_product_age_days_for_flip_signal", 0)),
         "validated_cardmarket_en_nm": sum(1 for r in scored if r.get("cm_en_nm_floor") is not None),
         "visible_cardtrader_en_nm": sum(1 for r in scored if r.get("ct_en_nm_floor") is not None),
-        "pricing_guardrail": "Cardmarket generic low is discovery only. A Cardmarket BUY requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing evidence layer. CardTrader EN/NM remains separately labelled. eBay active asks are never labelled as sold prices.",
+        "pricing_guardrail": "Cardmarket generic low is discovery only and cannot drive gap_pct, deal-score gap, or top-flip qualification. Top flips require validated EN/NM acquisition evidence. A Cardmarket BUY additionally requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing layer. CardTrader EN/NM remains separately labelled. eBay active asks are never labelled as sold prices.",
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "scanner_status.json").write_text(json.dumps(status, indent=2), encoding="utf-8")
