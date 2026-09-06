@@ -1,4 +1,4 @@
-version: "0.4"
+version: "0.5"
 timezone: Europe/Dublin
 
 sources:
@@ -21,8 +21,10 @@ catalog:
 
 rules:
   # IMPORTANT: Cardmarket's official "low" is NOT English+NM-specific.
-  # It is discovery-only. A Cardmarket BUY also requires Ireland-eligible sourcing
-  # evidence and a confirmed landed/basket-adjusted cost.
+  # It is discovery-only and cannot drive gap_pct, flip ranking, or a BUY signal.
+  # Top-flip qualification requires validated English/NM acquisition evidence.
+  # A Cardmarket BUY additionally requires Ireland-eligible sourcing evidence and
+  # a confirmed landed/basket-adjusted cost.
   cheap_hit_discovery_low_max_eur: 0.50
   cheap_hit_actionable_en_nm_max_eur: 0.60
   minimum_avg30_for_gap_score_eur: 0.20
