@@ -1,0 +1,14 @@
+listing_id,seller_name,listing_title,query_basis,match_quality,recovered_ask_eur,recovered_offer_eur,recovered_comment_state,notes,last_checked
+40758551,batch91,Pokemon Cards,id+generic_title,none,10,,,"Generic title; exact ID/title search did not recover the listing in the tested public search index. User screenshot separately confirms €10/tin or €60/lot and SOLD state.",2026-09-06
+40926024,batch91,Pokemon Cards,id+seller+title,exact_page,20,,,"Exact Adverts page recovered from third-party search index with description and €20 ask.",2026-09-06
+40926025,batch91,Pokemon Cards,id+seller+title,exact_page,20,20,offer_visible,"Exact page recovered; €20 offer/comment evidence visible in index. Separate user screenshot later showed SOLD.",2026-09-06
+36964449,PokeDub,Pokemon Silver Tempest Complete Master set and Promos 1700Euro,exact_title,exact_page,1,750,still_available_after_offer,"Exact page recovered with multiple offers/comments; current indexed ask is €1 placeholder while historical title references 1700Euro. Useful example that title and current ask can diverge.",2026-09-06
+37253325,PokeDub,Prismatic Evolutions Roaring Moon ex #162,exact_title,exact_page,200,140,still_available_after_offer,"Exact page recovered with rejected €125/€140 offers and DM placeholder acceptance.",2026-09-06
+36411508,PokeDub,Pokemon Scarlet & Violet Complete master set and all rare promos,exact_title,exact_page,700,350,rejected_offer,"Exact page recovered with €700 ask and rejected €350 offer.",2026-09-06
+37724353,PokeDub,Pokemon Black Star Promo Hisuian Decidueye V #SWSH238,exact_title,exact_page,3,,,"Exact page recovered with €3 ask.",2026-09-06
+36200911,PokeDub,Pokemon Prismatic Evolutions Larrys Skill Pokeball #115,exact_title,exact_page,3,,,"Exact page recovered with €3 ask plus postage in description.",2026-09-06
+36200874,PokeDub,Pokemon Prismatic Evolutions Max Rod #116,exact_title,exact_page,4,,,"Exact page recovered with €4 ask plus postage in description.",2026-09-06
+38889838,mini4real2k6,Pokemon Card Bundles,exact_title+seller,exact_page,1,,still_available_repeat_interest,"Exact page recovered; description says €7/bundle and comments include 2 for €13 incl postage. Page-level ask is a placeholder €1.",2026-09-06
+40758540,batch91,Pokemon Cards,id+seller+title,exact_page,25,,,"Exact page recovered with full-binder description and €25 ask.",2026-09-06
+36342137,mini4real2k6,Sword & Shield - Vivid Voltage Pokemon cards bulk,exact_title+seller,results_page,1,,,"Search results page recovered the exact listing title/ask but not the full page in this probe.",2026-09-06
+39273643,mini4real2k6,Bulk Pokemon Energy Cards,exact_title+seller,results_page,1,,,"Search results page recovered the exact listing title/ask but not the full page in this probe.",2026-09-06
