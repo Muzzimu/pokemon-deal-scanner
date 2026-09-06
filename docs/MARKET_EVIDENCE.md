@@ -41,6 +41,17 @@ For each card we validate:
 8. Treat one unusual transaction cautiously. Multiple clean exact-card sales are stronger than a single outlier.
 9. Product Research evidence may support a manual resale decision, but must still be combined with acquisition cost, Cardmarket EN/NM, CardTrader supply, fees/postage and sale velocity.
 
+### Export / data-capture note
+
+As of the 2026-09-06 review, eBay's official Product Research documentation does **not** document a CSV/XLSX export for the Product Research market-results table itself. Seller Hub **Reports** can export the user's own orders/listings/marketing data, but that is a different feature and is not a Product Research market-data export.
+
+For this project:
+
+- Prefer manual review of Product Research and save only normalized summary evidence in `data/reference/ebay_product_research_summary.csv`.
+- For small result sets, manually copy/paste visible table rows into a spreadsheet or share screenshots for analysis.
+- Do not build browser automation, network interception, scraping, or other bulk extraction around Product Research unless eBay explicitly permits that use.
+- Re-check eBay documentation before assuming this limitation is permanent; the UI/features may change.
+
 ### Access notes
 
 - eBay currently describes Product Research as free to sellers and available under **Seller Hub → Research → Product Research**.
@@ -52,6 +63,7 @@ Official eBay references for this workflow:
 - https://www.ebay.com/help/selling/selling-tools/terapeak?id=4853
 - https://www.ebay.com/sellercenter/growth/ebay-research-tools
 - https://www.ebay.com/sellercenter/selling/how-to-sell/seller-hub
+- https://export.ebay.com/en/services-tools/seller-hub/seller-hub-reports/
 
 ### Manual-evidence rules
 
