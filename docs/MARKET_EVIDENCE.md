@@ -25,6 +25,34 @@ For manual card-by-card resale validation, use the following order of confidence
    - Useful for discovery and cross-checking only.
    - Do not promote a snippet or tracker estimate to confirmed sold evidence unless the underlying exact transaction can be independently verified.
 
+### eBay Product Research operating procedure
+
+Product Research is the preferred manual eBay source for this project because it provides up to three years of eBay sales data and can show actual sold prices, including accepted Best Offers where eBay exposes them. It is accessed through the ordinary seller account / Seller Hub rather than the Developer API.
+
+For each card we validate:
+
+1. Search the **exact card identity**, normally `Pokemon name + set code + collector number`, e.g. `Mega Lucario ex MEP 033`.
+2. Exclude mismatches: slabs/graded cards, lots, jumbo cards, proxies/custom cards, Japanese/other languages when evaluating English, and different collector numbers or print variants.
+3. Prefer **raw English** examples and match condition as closely as Product Research allows.
+4. Start with a recent window such as **90 days** to measure current price/liquidity; expand to **365 days** or longer when the sample is thin or we want seasonality/history.
+5. Prefer **Ireland / continental-European seller-location evidence** where sufficient. UK evidence is useful secondary context; US/global evidence is tertiary context for Irish resale decisions.
+6. Record the useful normalized outputs rather than copying proprietary raw datasets: search term/exact card, date window, sold count/sample, representative sold prices or median/range, shipping context where relevant, region, currency, and any important exclusion notes.
+7. Where Product Research shows actual accepted Best Offer outcomes, use the realized sold amount rather than a crossed-out/original asking price.
+8. Treat one unusual transaction cautiously. Multiple clean exact-card sales are stronger than a single outlier.
+9. Product Research evidence may support a manual resale decision, but must still be combined with acquisition cost, Cardmarket EN/NM, CardTrader supply, fees/postage and sale velocity.
+
+### Access notes
+
+- eBay currently describes Product Research as free to sellers and available under **Seller Hub → Research → Product Research**.
+- eBay's help/seller documentation has varied over time on the precise eligibility needed to opt into Seller Hub/Product Research. If a new account does not show the Research tab, complete legitimate seller onboarding and use a genuine listing/sale path rather than creating artificial/self-transactions.
+- The mobile eBay app also exposes Product Research for eligible sellers, but desktop Seller Hub is preferred for this project because filtering and review are easier.
+
+Official eBay references for this workflow:
+
+- https://www.ebay.com/help/selling/selling-tools/terapeak?id=4853
+- https://www.ebay.com/sellercenter/growth/ebay-research-tools
+- https://www.ebay.com/sellercenter/selling/how-to-sell/seller-hub
+
 ### Manual-evidence rules
 
 - Exact-card identity matters: set, collector number, version, language, condition and raw/graded status must match.
