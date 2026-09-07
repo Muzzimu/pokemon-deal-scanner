@@ -92,6 +92,34 @@ seller_baskets:
   planning_direct_shipping_eur: 2.00
   max_report_rows: 100
 
+local_cherry_pick:
+  # Discovery must come from user-supplied pages or third-party public search
+  # indexes/archives; do not directly crawl Adverts.ie.
+  required_language: en
+  required_condition: NM
+  minimum_discount_pct: 20.0
+  minimum_absolute_discount_eur: 1.50
+  watch_discount_pct: 10.0
+  default_postage_eur: 2.00
+  default_postage_up_to_cards: 10
+  require_verified_en_nm_reference: true
+  preferred_traits:
+    - stamped
+    - promo
+    - vintage
+    - older_holo
+    - scarce_variant
+    - popular_pokemon
+  sellers:
+    Rocco_jr:
+      platform: Adverts.ie
+      public_member_url: https://www.adverts.ie/member/470512
+      legacy_user_id: 1462668
+      location: Tullamore, Offaly
+      postage_eur: 2.00
+      postage_up_to_cards: 10
+      role: high_retail_ceiling_and_cherry_pick_source
+
 watchlists:
   dragonite:
     query: Dragonite
