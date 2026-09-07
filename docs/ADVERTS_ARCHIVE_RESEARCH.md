@@ -1,6 +1,6 @@
 # Adverts sold-listing archive research
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Goal
 
@@ -54,21 +54,21 @@ Arquivo.pt is an independent European web archive with Memento/TimeMap endpoints
 
 Useful as a manual corroboration source where a snapshot already exists. Do not assume an official bulk API exists or build automation that violates archive-site access rules.
 
-## Controlled test results — 2026-09-06
+## Controlled test results
 
 Known sold batch91 listings initially tested:
 - `40758551`
 - `40926024`
 - `40926025`
 
-### Archive probe #1
+### Archive probe #1 — 2026-09-06
 
 Wayback CDX + Common Crawl exact-URL lookup:
 - 3 listings tested
 - 0 archive hits
 - multiple Wayback timeouts/503s and Common Crawl 502/503/504s, so the first zero-result run was not sufficient by itself.
 
-### Archive probe #2
+### Archive probe #2 — 2026-09-06
 
 Hardened test with retries plus:
 - Wayback Availability API
@@ -85,7 +85,18 @@ Result:
 
 This materially lowers confidence that public web archives will recover recent Adverts sold listings at useful hit rates.
 
-### Search-index test — expanded sample
+### Hostname / touch-domain archive variants — 2026-09-06
+
+A further probe tested 18 URL variants across the three known batch91 listings, including `www`, bare host, `touch`, HTTP and HTTPS variants.
+
+Result:
+- 3 listings tested
+- 18 URL variants tested
+- 0 archive hits
+
+This further weakens the case for traditional public web archives as the primary source.
+
+### General search-index test — expanded sample
 
 A third-party web-search index was tested against known historical listings already present in `data/reference/local_seller_history.csv`.
 
@@ -120,40 +131,56 @@ Examples recovered from the search index include:
 
 A `touch.adverts.ie` search result was also observed for a sold Pokémon card page showing the explicit message `This item has been sold. Here are some similar ads...`. This confirms that third-party search indexes can retain sold-state pages even where the original item body has been replaced by a sold fallback page.
 
+### Firecrawl Search benchmark — 2026-09-07
+
+The same 13-listing sample was then tested directly through the connected Firecrawl Search provider. Results are stored in `data/reference/firecrawl_adverts_probe_20260907.csv`.
+
+Result:
+- 13 known listings tested
+- 5 exact listing IDs recovered
+- 8 not recovered as exact matches
+- one failed exact-title search returned a different listing with the same card/title family, confirming that **listing-ID validation is mandatory**
+
+Observed exact hit rate in this small sample: **5/13 = 38%**.
+
+Firecrawl therefore did **not** reproduce the stronger general-search-index hit rate. It should not be the sole production backend for sold-history recovery at this stage.
+
+However, Firecrawl still showed useful discovery behavior. A broad search for the current 30-card competitor bundle description did not recover the new listing ID `40972004`, but it did recover an older Adverts listing `40441767` with the same distinctive 30-card bundle description. This demonstrates that content-fingerprint/title searches can recover historical competitor analogues even when the newest listing has not yet been indexed.
+
+Practical conclusion:
+- retain Firecrawl as an **optional search provider / discovery source**;
+- always exact-match the returned listing ID before using evidence for a specific advert;
+- do not treat a same-title/same-card result as the same listing;
+- for robust automation, evaluate a Google-SERP-backed API as a second provider because the manually tested general search index materially outperformed Firecrawl on this sample.
+
+Candidate search APIs for a future benchmark include SerpApi or Serper.dev. Google Custom Search JSON API is not a good new-project path in 2026 because Google has closed it to new customers and is transitioning existing users away by 2027.
+
 ## Current technical direction
 
-Prioritize **third-party search-index enrichment** over traditional web archives.
+Prioritize **third-party search-index enrichment** over traditional web archives, but use multiple providers rather than relying on Firecrawl alone.
 
 Proposed query order for a known listing:
 1. exact distinctive listing title;
 2. exact title + seller;
 3. listing ID + seller + title;
 4. known canonical URL / ID query;
-5. touch-host variant query;
-6. Wayback Availability/CDX exact URL;
-7. Common Crawl exact URL;
-8. Arquivo.pt exact URL;
-9. archive.today manual corroboration when useful.
+5. content-fingerprint query for generic/reused titles;
+6. touch-host variant query;
+7. Wayback Availability/CDX exact URL;
+8. Common Crawl exact URL;
+9. Arquivo.pt exact URL;
+10. archive.today manual corroboration when useful.
+
+Every search result must be validated against the expected listing ID before it is normalized as exact-listing evidence.
 
 The repository now contains:
 - `scripts/probe_adverts_archives.py`
 - `scripts/probe_adverts_touch_archives.py`
 - `scripts/probe_adverts_search_index.py`
 - `data/reference/adverts_search_index_probe.csv`
+- `data/reference/firecrawl_adverts_probe_20260907.csv`
 
-The search-index script is prepared for Firecrawl API search if `FIRECRAWL_API_KEY` is configured as a GitHub Actions secret. Firecrawl's documented v2 Search endpoint supports web search, domain restriction and result snippets/metadata, which fits this use case.
-
-A ChatGPT Firecrawl plugin connection is separate from a GitHub Actions API secret and should not be assumed to populate that secret automatically.
-
-## URL-variant probe
-
-Because historical Adverts pages may have been indexed under older hosts, the probe also tests known ID paths on variants such as:
-- `www.adverts.ie`
-- bare `adverts.ie`
-- `touch.adverts.ie`
-- HTTP and HTTPS
-
-This remains third-party archive lookup only; the probe does not request those Adverts URLs directly.
+The GitHub search-index script is prepared for Firecrawl API search if `FIRECRAWL_API_KEY` is configured as a GitHub Actions secret. A ChatGPT Firecrawl plugin connection is separate from a GitHub Actions API secret and should not be assumed to populate that secret automatically.
 
 ## Better production design: observe before and after sale
 
@@ -172,6 +199,7 @@ Input:
 - known `listing_id`
 - known or reconstructed canonical listing URL
 - optional seller/title keywords
+- optional content fingerprint for generic/reused titles
 
 Normalize to:
 - `listing_id`
@@ -196,6 +224,7 @@ Do not equate any of the following with a realized sale price:
 - archive snapshot disappearance
 - active asking price
 - PM/DM placeholder acceptance
+- same-title or same-card search result with a different listing ID
 
 Strongest archived/indexed Adverts evidence would show:
 - exact listing identity
@@ -206,10 +235,10 @@ Search snippets that show a concrete accepted offer plus later independent sold-
 
 ## Next technical test
 
-1. Finish the touch/hostname archive variant run.
-2. Run the Firecrawl search-index probe on the known sample once a GitHub Actions `FIRECRAWL_API_KEY` secret is available.
-3. Expand to at least 20 known historical Adverts listings and compare exact-title, seller+title, ID+seller+title and touch-host query hit rates.
-4. If Firecrawl reproduces the strong manual search-index hit rate, build a separate `search_index_enrichment` component with strict source labelling and confidence rules.
+1. Keep Firecrawl as an optional provider, not the sole backend.
+2. Benchmark a Google-SERP-backed provider against the same 13-listing sample before paying for or integrating it.
+3. Expand to at least 20 known historical Adverts listings and compare exact-title, seller+title, ID+seller+title and content-fingerprint query hit rates.
+4. If a search provider consistently reaches a useful hit rate, build a separate `search_index_enrichment` component with strict source labelling, exact-ID validation and confidence rules.
 
 ## References
 
@@ -217,4 +246,5 @@ Search snippets that show a concrete accepted offer plus later independent sold-
 - Internet Archive Wayback CDX / Availability APIs.
 - Common Crawl public CDXJ/URL indexes.
 - Arquivo.pt Memento/TimeMap API.
-- Firecrawl v2 Search API documentation.
+- Firecrawl Search API documentation.
+- Google Custom Search JSON API transition notice (new customers closed in 2026; existing service winds down by 2027).
