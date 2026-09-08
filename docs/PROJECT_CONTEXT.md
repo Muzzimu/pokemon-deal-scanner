@@ -1,6 +1,6 @@
 # Pokémon Deal Scanner — Durable Project Context
 
-Last consolidated: 2026-09-06
+Last consolidated: 2026-09-08
 
 This file is the durable carry-forward memory for the Pokémon TCG sourcing/resale project. It exists so that important decisions agreed in ChatGPT conversations do not disappear when a chat is replaced, shared, truncated, or moved.
 
@@ -78,6 +78,25 @@ Use local evidence according to confidence:
 Never assume that an accepted PM/DM or a disappeared listing completed at the advertised price.
 
 Adverts.ie tracking must remain manual/public-index based where required by the platform’s current Terms. Do not build unauthorized automated scraping/indexing of Adverts.ie.
+
+### Adverts.ie discovery v2 — mandatory for deal-watch runs
+
+The 2026-09-08 miss of listing `40981248` (`Pokemon cards in binder`) established that a single third-party search/index query is not sufficiently fresh for fast-moving Adverts bargains. The listing was highly relevant but had not propagated into the discovery index before attracting a quick accepted offer. Treat this as a **discovery/index-latency regression case**, not a scoring-threshold failure.
+
+For future manual Adverts deal-watch runs:
+
+- follow `docs/ADVERTS_DISCOVERY.md`;
+- use the multi-query matrix in `data/reference/adverts_discovery_queries.csv`, not one generic search;
+- re-check a rolling **6-hour overlap window** so late-indexed ads can still surface after the immediately previous run;
+- deduplicate and track identity by exact numeric Adverts listing ID;
+- prioritize recall for low-priced binders, collections, lots, bulk, many-photo listings, open-to-offers/clear-out language, and recognizable Pokémon/hit-card wording;
+- inspect the full description and all accessible photos before valuing a plausible candidate;
+- verify that the displayed ask is whole-lot vs per-card/placeholder and validate title/card-number/photo consistency;
+- use user-side Adverts saved-search alerts/alert emails as the preferred near-real-time safety net when available;
+- if only third-party-index discovery was available, do not overstate freshness/completeness in the report;
+- never add a direct Adverts scraper, crawler, RSS poller, app/API reverse-engineering client, or scheduled direct-site retrieval. Current Adverts Terms prohibit automated retrieval/indexing.
+
+The standing Dragonite photo/title mismatch is also part of this protocol: a card must not be valued from title/collector number alone when the photo visibly shows a different printing.
 
 ### Standing seller/retail benchmarks
 
@@ -195,6 +214,6 @@ Temporary push-trigger diagnostic workflows used for testing should be removed/r
 
 ## Conversation continuity rule
 
-When starting a new Business Ideas chat, do not rebuild project assumptions from scratch. Read this document, `README.md`, `config.yaml`, relevant `data/reference/` files, and recent commits first. Then use current live evidence for anything time-sensitive.
+When starting a new Business Ideas chat, do not rebuild project assumptions from scratch. Read this document, `README.md`, `docs/ADVERTS_DISCOVERY.md`, `config.yaml`, relevant `data/reference/` files, and recent commits first. Then use current live evidence for anything time-sensitive.
 
 This document is intentionally broader than the code README: README explains the scanner; this file preserves the business decisions and interpretation rules that would otherwise live only in ChatGPT conversation history.
