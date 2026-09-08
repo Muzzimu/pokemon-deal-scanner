@@ -65,6 +65,14 @@ Ireland/EU references are normally EUR, UK is GBP and Global is USD. Only EUR Ir
 
 DoneDeal can be used **manually** as additional Irish sourcing and asking-price context. It is intentionally not an automated scanner source; see `docs/MARKET_EVIDENCE.md`.
 
+## Adverts.ie manual discovery
+
+Adverts.ie is also a **manual/local research source, not a direct automated scanner source**. A fresh-discovery failure on 2026-09-08 showed that relying on one third-party search query can miss a newly posted binder before the external index catches up.
+
+Future Adverts deal-watch runs must follow [`docs/ADVERTS_DISCOVERY.md`](docs/ADVERTS_DISCOVERY.md): use the high-recall query matrix in `data/reference/adverts_discovery_queries.csv`, keep a rolling overlap window for late-indexed ads, validate exact listing IDs, inspect full descriptions/photos before valuation, and treat user-side Adverts saved-search alerts as the preferred near-real-time safety net.
+
+Do **not** add a direct Adverts scraper/RSS poller or other automated direct-site retrieval. The current Adverts Terms prohibit automated retrieval/indexing.
+
 ## Main outputs
 
 - `output/cheap_ex.csv`
@@ -82,7 +90,7 @@ DoneDeal can be used **manually** as additional Irish sourcing and asking-price 
 
 Business strategy, standing interpretation rules, local Irish benchmark policy, bundle concepts, deal-evaluation conventions, and conversation-continuity instructions are preserved in [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md).
 
-Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `docs/MARKET_EVIDENCE.md`, `docs/EBAY_API_COMPLIANCE.md`, `config.yaml`, the relevant `data/reference/` files, and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
+Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `docs/ADVERTS_DISCOVERY.md`, `docs/MARKET_EVIDENCE.md`, `docs/EBAY_API_COMPLIANCE.md`, `config.yaml`, the relevant `data/reference/` files, and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
 
 ## Workflow scheduling
 
