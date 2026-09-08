@@ -17,7 +17,7 @@ Meltan,Pokemon,normal,4,low-medium,Meltan -> Melmetal,1,strong regular/evolution
 Cufant,Pokemon,normal,3,low,Cufant -> Copperajah,1,evolution/themed stock,no,Cute but not primary highlight under stricter scale
 Iron Treads,Pokemon,normal,4,medium,None,1-2,secondary power highlight,no,Future Pokemon with strong visual appeal
 Victini,Pokemon,normal,5,low-medium,None,1-2,primary highlight,no,True headline/icon card for kids bundles
-Forretress,Pokemon,normal,3,low, Pineco -> Forretress,0-1,evolution/themed stock,no,Ordinary themed regular
+Forretress,Pokemon,normal,3,low,Pineco -> Forretress,0-1,evolution/themed stock,no,Ordinary themed regular
 Iron Moth,Pokemon,normal,4,medium,None,1-2,secondary power highlight,no,Future/Power theme; niche deck potential
 Sizzlipede,Pokemon,normal,3,low,Sizzlipede -> Centiskorch,0-1,evolution stock,no,Mostly evolution stock
 Ponyta,Pokemon,normal,4,low-medium,Ponyta -> Rapidash,1,secondary cute highlight/evolution,no,Recognisable and visually appealing
@@ -25,3 +25,76 @@ Rapidash,Pokemon,normal,4,low-medium,Ponyta -> Rapidash,1,secondary highlight/ev
 Yamper,Pokemon,normal,4,low,Yamper -> Boltund,1,secondary cute highlight/evolution,no,Cute regular with good kid appeal
 Boltund,Pokemon,normal,4,low-medium,Yamper -> Boltund,1,secondary highlight/evolution,no,Keep one pair with Yamper
 Electabuzz,Pokemon,normal,4,low-medium,Elekid -> Electabuzz -> Electivire,1,secondary highlight/evolution,no,Recognisable classic Pokemon
+Rowlet,Pokemon,normal,5,low-medium,Rowlet -> Dartrix -> Decidueye,1-2,primary cute highlight,no,Starter recognition; excellent kid appeal
+Dartrix,Pokemon,normal,3,low-medium,Rowlet -> Dartrix -> Decidueye,1,evolution stock,no,Middle evolution; mainly useful in complete line
+Decidueye,Pokemon,normal,4,medium,Rowlet -> Dartrix -> Decidueye,1,secondary highlight/evolution,no,Final evolution with strong theme appeal
+Dhelmise,Pokemon,normal,3,low,None,0-1,themed stock,no,Mostly ordinary themed stock
+Roselia,Pokemon,normal,4,low-medium,Roselia -> Roserade,1,secondary cute highlight/evolution,no,Pairs well with Roserade
+Roserade,Pokemon,normal,4,medium,Roselia -> Roserade,1,secondary highlight/evolution,no,Niche utility plus strong visual appeal
+Turtwig,Pokemon,normal,4,low-medium,Turtwig -> Grotle -> Torterra,1,secondary starter highlight,no,Starter appeal; preserve evolution line if possible
+Rabsca,Pokemon,normal,3,medium,Rellor -> Rabsca,1-2,deck/evolution reserve,no,Spherical Shield gives niche bench-protection utility
+Bramblin,Pokemon,normal,2,low,Bramblin -> Brambleghast,0-1,evolution stock,no,Low kid appeal; mainly evolution stock
+Rellor,Pokemon,normal,2,low-medium,Rellor -> Rabsca,1,evolution stock,no,Keep with Rabsca if preserving pair
+Grubbin,Pokemon,normal,3,low-medium,Grubbin -> Charjabug -> Vikavolt,1-2,evolution stock,no,Useful to complete existing Vikavolt line
+Cottonee,Pokemon,normal,4,low,Cottonee -> Whimsicott,1,secondary cute highlight/evolution,no,Good cute-bundle card
+Sawsbuck,Pokemon,normal,4,medium-high,Deerling -> Sawsbuck,1-2,secondary highlight/deck reserve,no,Changing Seasons gives legitimate Stadium-search utility
+Seedot,Pokemon,normal,3,low,Seedot -> Nuzleaf -> Shiftry,0-1,evolution stock,no,Mainly useful to complete full line
+Nuzleaf,Pokemon,normal,3,low-medium,Seedot -> Nuzleaf -> Shiftry,1,evolution stock,no,Middle evolution
+Shroomish,Pokemon,normal,4,low,Shroomish -> Breloom,1,secondary cute highlight/evolution,no,Cute and distinct; good support highlight
+Shaymin,Pokemon,normal,5,low-medium,None,1-2,primary highlight,no,Mythical and cute; strong kid appeal even non-holo
+Deerling,Pokemon,normal,4,medium,Deerling -> Sawsbuck,1-2,secondary cute highlight/evolution,no,Pairs with useful Sawsbuck
+Arbok,Pokemon,normal,4,low-medium,Ekans -> Arbok,1,secondary cool highlight,no,Recognisable classic Pokemon
+Yveltal,Pokemon,normal,5,medium,None,1-2,primary power highlight,no,Legendary and visually dramatic; excellent bundle anchor
+Ekans,Pokemon,normal,3,low,Ekans -> Arbok,1,evolution stock,no,Best kept with Arbok
+Poochyena,Pokemon,normal,3,low,Poochyena -> Mightyena,1,evolution stock,no,Mostly line support
+Mightyena,Pokemon,normal,4,low-medium,Poochyena -> Mightyena,1,secondary power highlight,no,Strong-looking final evolution
+Sableye,Pokemon,normal,4,low-medium,None,1,secondary cool highlight,no,Recognisable dark-theme card
+Absol,Pokemon,normal,4,low-medium,None,1,secondary power highlight,no,Strong visual and recognisable dark-theme card
+Crobat,Pokemon,normal,4,medium,Zubat -> Golbat -> Crobat,1-2,secondary highlight/deck reserve,no,Shadowy Envoy has niche Janine synergy
+Golbat,Pokemon,normal,3,low-medium,Zubat -> Golbat -> Crobat,1,evolution stock,no,Middle evolution
+Zubat,Pokemon,normal,3,low-medium,Zubat -> Golbat -> Crobat,1-2,evolution stock,no,Keep one full line with Crobat
+Zorua,Pokemon,normal,5,low-medium,Zorua -> Zoroark,1-2,primary highlight,no,Strong kid appeal even non-holo
+Malamar,Pokemon,normal,4,medium,Inkay -> Malamar,1,secondary highlight/deck reserve,no,Colluding Tentacles gives niche disruption value
+Inkay,Pokemon,normal,4,low-medium,Inkay -> Malamar,1,secondary cute highlight/evolution,no,Good cute/quirky appeal
+Weavile,Pokemon,normal,4,low-medium,Sneasel -> Weavile,1,secondary cool highlight,no,Recognisable power-themed evolution
+Carvanha,Pokemon,normal,3,low,Carvanha -> Sharpedo,1,evolution stock,no,Best used with Sharpedo
+Sharpedo,Pokemon,normal,4,low-medium,Carvanha -> Sharpedo,1,secondary power/shark highlight,no,Excellent for shark/water theme
+Snom,Pokemon,normal,4,low,Snom -> Frosmoth,1,secondary cute highlight,no,Cute regular; preserve with Frosmoth
+Frosmoth,Pokemon,normal,4,low-medium,Snom -> Frosmoth,1,secondary highlight/evolution,no,Good pair with Snom
+Totodile,Pokemon,normal,5,low-medium,Totodile -> Croconaw -> Feraligatr,1-2,primary starter highlight,no,Starter recognition and strong kid appeal
+Wiglett,Pokemon,normal,3,low,Wiglett -> Wugtrio,0-1,themed/evolution stock,no,Ordinary themed regular
+Finizen,Pokemon,normal,4,low-medium,Finizen -> Palafin,1,secondary cute/water highlight,no,Strong visual and kid appeal
+Sneasel,Pokemon,normal,4,low-medium,Sneasel -> Weavile,1,secondary cool highlight/evolution,no,Keep with Weavile
+Seadra,Pokemon,normal,4,low-medium,Horsea -> Seadra -> Kingdra,1,secondary water highlight/evolution,no,Recognisable line; better when paired with Horsea/Kingdra
+Rolycoly,Pokemon,normal,3,low,Rolycoly -> Carkol -> Coalossal,0-1,evolution stock,no,Mostly evolution stock
+Carkol,Pokemon,normal,3,low,Rolycoly -> Carkol -> Coalossal,1,evolution stock,no,Middle evolution
+Golett,Pokemon,normal,3,low,Golett -> Golurk,1,evolution stock,no,Keep with Golurk
+Golurk,Pokemon,normal,4,low-medium,Golett -> Golurk,1,secondary power highlight,no,Strong-looking final evolution
+Coalossal,Pokemon,normal,4,low-medium,Rolycoly -> Carkol -> Coalossal,1,secondary power highlight,no,Final evolution adds bundle appeal
+Keldeo,Pokemon,normal,5,low-medium,None,1-2,primary highlight,no,Mythical/legendary-style recognition; strong kid appeal
+Rockruff,Pokemon,normal,4,low,Rockruff -> Lycanroc,1,secondary cute/power highlight,no,Excellent pair with Lycanroc
+Drilbur,Pokemon,normal,3,medium,Drilbur -> Excadrill,1-2,evolution/deck reserve,no,Some deck utility compared with ordinary evolution stock
+Excadrill,Pokemon,normal,4,medium,Drilbur -> Excadrill,1,secondary power highlight/deck reserve,no,Final evolution with modest deck interest
+Slither Wing,Pokemon,normal,4,medium,None,1,secondary ancient/power highlight,no,Strong-looking Ancient Pokemon
+Lycanroc,Pokemon,normal,4,low-medium,Rockruff -> Lycanroc,1,secondary power highlight,no,Good evolution pair and kid appeal
+Mudbray,Pokemon,normal,3,low,Mudbray -> Mudsdale,0-1,evolution stock,no,Mostly evolution stock
+Mudsdale,Pokemon,normal,3,low-medium,Mudbray -> Mudsdale,1,themed/evolution stock,no,Power theme but not a major highlight
+Meditite,Pokemon,normal,3,low,Meditite -> Medicham,0-1,evolution stock,no,Mostly evolution stock
+Medicham,Pokemon,normal,3,low-medium,Meditite -> Medicham,1,themed/evolution stock,no,Final evolution but modest kid appeal
+Great Tusk,Pokemon,normal,4,medium,None,1-2,secondary ancient/power highlight,no,Best card in its batch for power theme and deck interest
+Sandy Shocks,Pokemon,normal,3,medium,None,1,ancient/power themed stock,no,Niche Ancient utility
+Tranquill,Pokemon,normal,2,low,Pidove -> Tranquill -> Unfezant,0-1,evolution stock,no,Low standalone appeal
+Dunsparce,Pokemon,normal,3,high,Dunsparce -> Dudunsparce,up to 4,do not bundle until engine secured,no,Keep with Dudunsparce as real draw-engine package
+Noctowl,Pokemon,normal,4,low-medium,Hoothoot -> Noctowl,1,secondary highlight/evolution,no,Recognisable final evolution
+Pidove,Pokemon,normal,3,low-medium,Pidove -> Tranquill -> Unfezant,1,evolution stock,no,Complete line with Tranquill/Unfezant
+Hoothoot,Pokemon,normal,4,low,Hoothoot -> Noctowl,1,secondary cute highlight/evolution,no,Distinctive cute art
+Lickitung,Pokemon,normal,3,low-medium,Lickitung -> Lickilicky,0-1,themed/evolution stock,no,Recognisable but modest highlight value
+Lickilicky,Pokemon,normal,3,low-medium,Lickitung -> Lickilicky,1,themed/evolution stock,no,Best kept as pair
+Chatot,Pokemon,normal,3,medium,None,1,themed/deck reserve,no,A Cappella offers modest setup utility
+Skitty,Pokemon,normal,4,low-medium,Skitty -> Delcatty,1,secondary cute highlight,no,Good cute-bundle card
+Delcatty,Pokemon,normal,4,medium,Skitty -> Delcatty,1,secondary highlight/deck reserve,no,Some niche Energy utility
+Furfrou,Pokemon,normal,4,medium,None,1,secondary cute highlight/deck reserve,no,Energy Assist gives modest utility
+Stufful,Pokemon,normal,4,low,Stufful -> Bewear,1,secondary cute highlight/evolution,no,Strong cute appeal
+Bewear,Pokemon,normal,4,low-medium,Stufful -> Bewear,1,secondary strong/cute highlight,no,Good pair with Stufful
+Unfezant,Pokemon,normal,3,low-medium,Pidove -> Tranquill -> Unfezant,1,evolution completion,no,Completes full Pidove line
+Iron Jugulis,Pokemon,normal,4,medium,None,1-2,secondary future/power highlight,no,Strong visual and niche deck value
