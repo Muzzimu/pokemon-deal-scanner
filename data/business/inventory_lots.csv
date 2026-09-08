@@ -1,0 +1,2 @@
+lot_id,purchase_date,source,description,landed_cost_eur,total_cards_est,holo_reverse_cards_est,other_cards_est,v_ex_cards_est,avg_cost_per_card_eur,business_inventory,notes
+BULK-20260908-01,2026-09-08,local_bulk,"Opening bulk lot for Standard/Premium bundles",20.00,800,100,700,0,0.025,true,"User requested planning assumption of 800 total cards and ~100 holo/reverse cards. Treat €20 as the current landed lot cost unless later corrected."
