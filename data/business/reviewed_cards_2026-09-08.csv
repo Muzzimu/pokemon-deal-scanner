@@ -1,0 +1,87 @@
+card_name,category,finish_or_batch,iconic_rating,deck_priority,evolution_note,personal_keep,bundle_role,single_sale,notes
+Trekking Shoes,Trainer,holo/reverse,2,low,None,0-1,trainer highlight,no,Rotated; visually nicer than plain Trainer bulk
+Klara,Trainer,holo/reverse,4,low,None,0-1,trainer highlight,no,Rotated; recognisable Supporter
+Marnie,Trainer,holo/reverse,5,low,None,1,trainer highlight/collector keep,maybe,Popular character; keep separate before using as filler
+Eri,Trainer,standard,3,medium,None,1-2,trainer slot,no,Useful disruption tech
+Ciphermaniac's Codebreaking,Trainer,standard,3,medium-high,None,2-4,trainer slot,no,Useful search/support option
+Morty's Conviction,Trainer,standard,3,medium,None,1-2,trainer slot,no,Niche Supporter
+Ancient Booster Energy Capsule,Trainer,standard,3,low,None,1-2,trainer slot,no,Ancient-specific; lower priority after rotation changes
+Bianca's Devotion,Trainer,standard,3,low,None,1,trainer slot,no,Safe bundle Trainer beyond one copy
+Boxed Order,Trainer,standard,2,low,None,1,trainer slot,no,Low-priority Trainer
+Explorer's Guidance,Trainer,standard,2,low,None,1-2,trainer slot,no,Niche Ancient support
+Full Metal Lab,Trainer,standard,3,medium,None,2-3,trainer slot,no,Useful Metal Stadium reserve
+Future Booster Energy Capsule,Trainer,standard,3,low,None,1-2,trainer slot,no,Future-specific; lower priority after rotation changes
+Binding Mochi,Trainer,standard,3,medium,None,2-4,trainer slot,no,Keep for Poison experiments
+Colress's Tenacity,Trainer,standard,4,medium-high,None,2-3,trainer slot,no,Useful Stadium + Energy search
+Powerglass,Trainer,standard,3,medium,None,1-2,trainer slot,no,Potential Energy recovery tech
+Hand Trimmer,Trainer,standard,2,low-medium,None,1-2,trainer slot,no,Niche disruption
+Rescue Board,Trainer,standard,4,high,None,2-4,trainer slot,no,Strong generic utility
+Heavy Baton,Trainer,standard,3,medium,None,1-2,trainer slot,no,Useful in high-retreat decks
+Xerosic's Machinations,Trainer,standard,3,medium,None,1-2,trainer slot,no,Disruption tech
+Academy at Night,Trainer,standard,3,medium,None,1-2,trainer slot,no,Niche Stadium utility
+Buddy-Buddy Poffin,Trainer,standard,4,very high,None,keep all up to playsets,do not bundle until surplus,no,Top generic staple from Trainer batch
+Salvatore,Trainer,standard,3,medium,None,1-2,trainer slot,no,Evolution support
+Perilous Jungle,Trainer,standard,3,medium,None,2,trainer slot,no,Keep for Poison experiments
+Meowth,Pokemon,holo/reverse pile,4,low,Meowth -> Persian,1-2,iconic highlight,no,Recognisable kid appeal
+Haunter,Pokemon,holo/reverse pile,4,medium,Gastly -> Haunter -> Gengar,1,bundle highlight after reserve,no,Keep if building Gengar line
+Hoothoot,Pokemon,holo/reverse pile,3,low,Hoothoot -> Noctowl,1,evolution/bundle,no,Duplicate name seen in multiple photos
+Drilbur,Pokemon,holo/reverse pile,3,medium,Drilbur -> Excadrill,1-2,evolution/bundle,no,Potential future Excadrill use
+Beldum,Pokemon,holo/reverse pile,3,medium,Beldum -> Metang -> Metagross,1-2,evolution reserve,no,Keep complete line where possible
+Metang,Pokemon,holo/reverse pile,3,high,Beldum -> Metang -> Metagross,up to 4,do not bundle until surplus,no,Best deck piece in Metagross line
+Metagross,Pokemon,holo/reverse pile,4,medium,Beldum -> Metang -> Metagross,1,bundle highlight after reserve,no,Good complete-line card
+Raichu,Pokemon,holo/reverse pile,5,low-medium,Pikachu -> Raichu,1,iconic highlight,no,Strong son/kid appeal
+Duskull,Pokemon,holo/reverse pile,4,high,Duskull -> Dusclops -> Dusknoir,up to 4,do not bundle until surplus,no,Competitive evolution engine component
+Melmetal,Pokemon,holo/reverse pile,4,medium,Meltan -> Melmetal,1,premium highlight,no,Keep one personal copy
+Genesect,Pokemon,holo/reverse pile,4,medium,None,1-2,premium highlight,no,Ability gives some deck potential
+Copperajah,Pokemon,holo/reverse pile,3,low-medium,Cufant -> Copperajah,1,holo highlight,no,Mostly theme/evolution stock
+Dunsparce,Pokemon,holo/reverse pile,3,high,Dunsparce -> Dudunsparce,up to 4,do not bundle until surplus,no,Supports Dudunsparce draw engine
+Kyurem,Pokemon,holo/reverse pile,5,medium-high,None,1-2,premium highlight,no,Strong legendary appeal and tech potential
+Mawile,Pokemon,holo/reverse pile,4,low-medium,None,1,premium highlight,no,Good kid appeal
+Relicanth,Pokemon,holo/reverse pile,3,medium-high,None,1-2,holo highlight after reserve,no,Memory Dive can enable evolved Pokemon attacks
+Slither Wing,Pokemon,holo/reverse pile,4,medium,None,1,power highlight,no,Ancient/Fighting option
+Golurk,Pokemon,holo/reverse pile,3,low,Golett -> Golurk,1,evolution/bundle,no,Mostly evolution stock
+Lycanroc,Pokemon,holo/reverse pile,4,low-medium,Rockruff -> Lycanroc,1,power highlight,no,Good kid/power theme
+Sandy Shocks,Pokemon,holo/reverse pile,3,medium,None,1,power highlight,no,Niche Ancient/Fighting use
+Coalossal,Pokemon,holo/reverse pile,3,low,Rolycoly -> Carkol -> Coalossal,1,evolution/bundle,no,Mostly evolution stock
+Sawsbuck,Pokemon,holo/reverse pile,4,high,Deerling -> Sawsbuck,1-2,premium highlight after reserve,no,Changing Seasons Stadium search is useful
+Whimsicott,Pokemon,holo/reverse pile,4,medium,Cottonee -> Whimsicott,1,premium/cute highlight,no,Interesting Ability
+Cottonee,Pokemon,holo/reverse pile,4,low-medium,Cottonee -> Whimsicott,1,cute/evolution highlight,no,Keep with Whimsicott
+Shaymin,Pokemon,holo/reverse pile,5,low-medium,None,1,premium/cute highlight,no,Strong iconic appeal
+Shroomish,Pokemon,holo/reverse pile,4,low,Shroomish -> Breloom,1,cute/evolution highlight,no,Keep with Breloom
+Nuzleaf,Pokemon,holo/reverse pile,3,low,Seedot -> Nuzleaf -> Shiftry,1,evolution/bundle,no,Mostly evolution stock
+Breloom,Pokemon,holo/reverse pile,4,low,Shroomish -> Breloom,1,bundle highlight,no,Good evolution pair with Shroomish
+Shiftry,Pokemon,holo/reverse pile,4,medium,Seedot -> Nuzleaf -> Shiftry,1,premium highlight after reserve,no,Niche disruption potential
+Malamar,Pokemon,holo/reverse pile,4,medium,Inkay -> Malamar,1,evolution/highlight,no,Keep one with Inkay
+Inkay,Pokemon,holo/reverse pile,5,medium,Inkay -> Malamar,1,cute/iconic highlight,no,Very strong kid appeal
+Dusknoir,Pokemon,holo/reverse pile,4,very high,Duskull -> Dusclops -> Dusknoir,1-2,do not bundle until engine secured,no,Competitive engine piece
+Ribombee,Pokemon,holo/reverse pile,4,low-medium,Cutiefly -> Ribombee,1,cute highlight,no,Good visual bundle card
+Zorua,Pokemon,holo/reverse pile,5,medium,Zorua -> Zoroark,1-2,iconic highlight,no,Strong kid appeal
+Roaring Moon,Pokemon,holo/reverse pile,5,medium,None,1-2,premium power highlight,no,Excellent front-of-bundle card
+Zoroark,Pokemon,holo/reverse pile,5,medium,Zorua -> Zoroark,1,iconic highlight,no,Keep with Zorua
+Flutter Mane,Pokemon,holo/reverse pile,5,very high,None,up to 4,do not bundle until playset secured,no,Competitive utility plus strong appeal
+Iron Valiant,Pokemon,holo/reverse pile,5,medium,None,1-2,premium power highlight,no,Multiple copies/printings seen
+Elgyem,Pokemon,holo/reverse pile,3,low-medium,Elgyem -> Beheeyem,1,evolution/bundle,no,Mostly evolution stock
+Bronzong,Pokemon,holo/reverse pile,3,medium,Bronzor -> Bronzong,1-2,evolution/bundle,no,Niche utility
+Marill,Pokemon,holo/reverse pile,5,low-medium,Marill -> Azumarill,1-2,cute highlight,no,Excellent cute-bundle card
+Solosis,Pokemon,holo/reverse pile,3,low,Solosis -> Duosion -> Reuniclus,1,evolution/bundle,no,Mostly evolution stock
+Feraligatr,Pokemon,holo/reverse pile,5,medium,Totodile -> Croconaw -> Feraligatr,1,premium power highlight,no,Strong visual and kid appeal
+Wiglett,Pokemon,holo/reverse pile,4,low,Wiglett -> Wugtrio,1,cute/evolution highlight,no,Good theme card
+Snom,Pokemon,holo/reverse pile,5,low-medium,Snom -> Frosmoth,1-2,cute highlight,no,Excellent kid/cute appeal
+Koraidon,Pokemon,holo/reverse pile,5,medium,None,1-2,premium power highlight,no,Use as visible bundle anchor after keeps
+Miraidon,Pokemon,holo/reverse pile,5,medium,None,1-2,premium power highlight,no,Use as visible bundle anchor after keeps
+Iron Hands,Pokemon,holo/reverse pile,5,low-medium,None,1-2,premium power highlight,no,Strong visual bundle card
+Iron Thorns,Pokemon,holo/reverse pile,5,low-medium,None,1-2,premium power highlight,no,Strong visual bundle card
+Zeraora,Pokemon,holo/reverse pile,5,low-medium,None,1,iconic power highlight,no,Excellent kid appeal
+Charjabug,Pokemon,holo/reverse pile,3,low-medium,Grubbin -> Charjabug -> Vikavolt,1-2,evolution/bundle,no,Keep with Vikavolt line
+Vikavolt,Pokemon,holo/reverse pile,4,low-medium,Grubbin -> Charjabug -> Vikavolt,1,power/evolution highlight,no,Good power-theme card
+Electivire,Pokemon,holo/reverse pile,4,low-medium,Elekid -> Electabuzz -> Electivire,1,power/evolution highlight,no,Good power-theme card
+Tranquill,Pokemon,holo/reverse pile,2,low,Pidove -> Tranquill -> Unfezant,1,evolution/bundle,no,Mostly evolution stock
+Dudunsparce,Pokemon,holo/reverse pile,4,very high,Dunsparce -> Dudunsparce,up to 4,do not bundle until playset secured,no,Real draw-engine piece
+Drampa,Pokemon,holo/reverse pile,4,low-medium,None,1,premium highlight,no,Good visual holo
+Pidove,Pokemon,holo/reverse pile,3,low,Pidove -> Tranquill -> Unfezant,1,evolution/bundle,no,Keep with Tranquill
+Turtonator,Pokemon,holo/reverse pile,4,low-medium,None,1,power highlight,no,Good Fire/Power bundle card
+Centiskorch,Pokemon,holo/reverse pile,4,low,Sizzlipede -> Centiskorch,1,fire/power highlight,no,Mostly theme stock
+Slugma,Pokemon,holo/reverse pile,3,low,Slugma -> Magcargo,1,evolution/bundle,no,Keep with Magcargo
+Magcargo,Pokemon,holo/reverse pile,4,low-medium,Slugma -> Magcargo,1,fire holo highlight,no,Better as visual highlight than single sale
+Torracat,Pokemon,holo/reverse pile,4,low-medium,Litten -> Torracat -> Incineroar,1-2,fire/evolution highlight,no,Good evolution stock
+Heatmor,Pokemon,holo/reverse pile,3,low,None,0-1,fire bundle,no,General holo bundle stock
