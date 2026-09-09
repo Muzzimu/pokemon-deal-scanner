@@ -61,12 +61,15 @@ def main() -> None:
     recipe_costs: dict[str, dict[str, float]] = {}
     for r in recipes:
         bundle = r["bundle_type"]
-        bulk_cards_per_bundle = fnum(r.get("total_cards")) - fnum(r.get("v_ex"))
-        raw_cost = bulk_cards_per_bundle * avg_bulk_cost + fnum(r.get("v_ex")) * v_ex_cost
+        icon_count = fnum(r.get("icon"))
+        v_ex_count = fnum(r.get("v_ex"))
+        bulk_cards_per_bundle = fnum(r.get("total_cards")) - icon_count - v_ex_count
+        raw_cost = bulk_cards_per_bundle * avg_bulk_cost + icon_count * avg_icon_cost + v_ex_count * v_ex_cost
         recipe_costs[bundle] = {
             "raw_card_cost_eur": round(raw_cost, 4),
             "adverts_price_eur": fnum(r.get("adverts_price_eur")),
             "vinted_test_price_eur": fnum(r.get("vinted_test_price_eur")),
+            "icon_cards_per_bundle": icon_count,
             "holo_reverse_per_bundle": fnum(r.get("holo_reverse")),
         }
 
