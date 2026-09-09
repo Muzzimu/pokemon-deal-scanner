@@ -1,30 +1,35 @@
 {
-  "inventory_spend_eur": 20.0,
+  "inventory_spend_eur": 28.93,
+  "bulk_inventory_spend_eur": 20.0,
+  "icon_inventory_spend_eur": 8.93,
   "packaging_spend_eur": 0.0,
   "research_test_spend_eur": 12.5,
-  "operating_cash_invested_eur": 20.0,
-  "all_in_project_cash_spent_eur": 32.5,
-  "estimated_business_cards": 800,
+  "operating_cash_invested_eur": 28.93,
+  "all_in_project_cash_spent_eur": 41.43,
+  "estimated_business_cards": 842,
   "estimated_holo_reverse_cards": 100,
+  "estimated_icon_cards": 42,
   "average_bulk_card_cost_eur": 0.025,
+  "average_icon_card_cost_eur": 0.2126,
   "v_ex_planning_cost_eur": 0.75,
   "bundle_raw_card_costs": {
     "Standard": {
-      "raw_card_cost_eur": 1.25,
+      "raw_card_cost_eur": 1.4376,
       "adverts_price_eur": 5.0,
       "vinted_test_price_eur": 5.99,
-      "holo_reverse_per_bundle": 10.0
+      "icon_cards_per_bundle": 1.0,
+      "holo_reverse_per_bundle": 9.0
     },
     "Premium": {
-      "raw_card_cost_eur": 1.975,
+      "raw_card_cost_eur": 2.1626,
       "adverts_price_eur": 7.0,
       "vinted_test_price_eur": 7.99,
-      "holo_reverse_per_bundle": 8.0
+      "icon_cards_per_bundle": 1.0,
+      "holo_reverse_per_bundle": 7.0
     }
   },
   "sales_item_revenue_eur": 0.0,
   "sales_net_cash_received_eur": 0.0,
-  "operating_break_even_remaining_eur": 20.0,
-  "all_in_break_even_remaining_eur": 32.5,
-  "note": "Packaging purchases not yet entered. Research/test bundles are excluded from product COGS and operating break-even because the cards are retained personally."
+  "operating_break_even_remaining_eur": 28.93,
+  "all_in_break_even_remaining_eur": 41.43
 }
