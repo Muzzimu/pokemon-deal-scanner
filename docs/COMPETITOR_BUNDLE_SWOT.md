@@ -27,7 +27,52 @@ This document summarizes the direct bundle competitors currently captured in the
 - no Energy filler planned
 - Cute / Power / Mixed themes
 
-## 1. mini4real2k6 — Adverts member 615297
+## 1. CzarnyNDM — Adverts member 1115055 — listing 29492756
+
+### Observed product
+- €5 for 50 English Sword & Shield-era cards
+- guaranteed V / 'ultra rare shiny card' wording
+- 2 holo + 2 reverse holo stated
+- common/uncommon/rare mix
+- no duplicates
+- no Energy unless specifically needed
+- €2.50 postage
+- multiple bundles available
+- repeated €5 offers on the active listing
+- Top Seller / verified; member since 2014
+- 270 positive / 0 negative feedback and 205 sold ads at the 2026-09-09 profile snapshot
+- recent feedback usernames overlap with current bundle-offer usernames, which is suggestive of real turnover but not enough to prove exact bundle transactions or realized price
+
+### SWOT against our products
+
+**Strengths**
+- Very aggressive €5 price for a full 50-card bundle.
+- Guaranteed V/ultra-rare-style hit at the same headline price as our Standard.
+- English, no duplicates and effectively no Energy filler.
+- Large established seller reputation dramatically reduces buyer trust friction.
+- Long-running/repeat product with multiple bundles available and repeated full-price offers.
+
+**Weaknesses**
+- Only 4 stated holo/reverse-holo cards versus our Standard's 9.
+- No theme or recognizable-Pokémon curation stated.
+- Presentation appears card-led rather than gift-led; no tin/coin/bonus described.
+- Wording around the guaranteed V versus 'ultra rare shiny card' is somewhat imprecise, so exact hit specification is less clear than a tightly written guaranteed-content table.
+
+**Opportunities for us**
+- Make the Standard proposition explicitly about **9 shiny cards + theme + recognizable Pokémon**, rather than trying to win on the presence of a V.
+- Use better photography, theme labels and clear guaranteed-content wording to make a new seller look more intentional and trustworthy.
+- Preserve the €7 Premium as the obvious upgrade for buyers who specifically want an ex/V hero.
+- Consider a recognizable non-ex/V 'hero Pokémon' in the €5 Standard so it still has a focal card without collapsing the distinction between tiers.
+
+**Threats**
+- This is now the clearest direct threat to our €5 Standard because it offers the same 50-card count and adds a V at the same €5 headline price.
+- Seller trust is substantially stronger than ours at launch.
+- Some parents/children may value '1 V card' more than the difference between 4 and 9 holo/RH cards.
+- Repeated availability means this is not a one-off liquidation price; it may represent a sustainable local floor for basic 50-card hero-card bundles.
+
+**Market role:** primary benchmark/threat for the €5 entry tier.
+
+## 2. mini4real2k6 — Adverts member 615297
 
 ### Observed product
 - €7 for 50 English pack-fresh cards
@@ -62,13 +107,13 @@ This document summarizes the direct bundle competitors currently captured in the
 - Offer multi-buy without needing to undercut the single-bundle price immediately.
 
 **Threats**
-- This is the clearest direct low-price competitor and sets a strong local expectation for what €7 should buy.
+- This remains the clearest direct €7 competitor and sets a strong local expectation for what €7 should buy.
 - Existing reviews and repeat buyers give the seller a trust advantage when our account/product is new.
 - If buyers primarily optimize for number of cards + guaranteed V/EX, our curation may not matter enough without strong photos/listing copy.
 
 **Market role:** primary benchmark for the €7 value tier.
 
-## 2. Unknown Rathfarnham bundle seller — listings 40441767 / 40972004
+## 3. Unknown Rathfarnham bundle seller — listings 40441767 / 40972004
 
 ### Observed product
 - 30-card bundle
@@ -107,7 +152,7 @@ This document summarizes the direct bundle competitors currently captured in the
 
 **Market role:** high-price / weak-content control benchmark.
 
-## 3. Onest — Adverts member 851641 — listing 40009272
+## 4. Onest — Adverts member 851641 — listing 40009272
 
 ### Observed product
 - €10 non-negotiable
@@ -151,7 +196,7 @@ This document summarizes the direct bundle competitors currently captured in the
 
 **Market role:** primary benchmark for the €9–10 premium/gift tier.
 
-## 4. Holly 96 — Adverts member 1239648 / Vinted cross-post
+## 5. Holly 96 — Adverts member 1239648 / Vinted cross-post
 
 ### Observed products
 Current cross-posted lot:
@@ -205,13 +250,14 @@ Earlier near-identical lot:
 
 The current saved evidence suggests at least four distinct local product positions rather than one homogeneous 'Pokémon bulk bundle' market:
 
-1. **Low-cost curated treat — €5**
-   - Our Standard is currently unusual here: 50 cards, 9 holo/RH, theme, no Energy filler.
-   - This can be our acquisition funnel / parent impulse-buy tier.
+1. **Low-cost 50-card hero bundle — ~€5**
+   - CzarnyNDM establishes that 50 English cards + a V/ultra-rare-style hit + 4 holo/RH can be offered repeatedly at €5 without Energy filler.
+   - This materially raises the competitive bar for our €5 Standard. Our edge is **9 holo/RH + themes + recognizable-Pokémon curation**, not price or card count.
+   - Our Standard should be marketed as a shiny/themed bundle, not a cheaper version of Premium.
 
 2. **Value hero-card bundle — ~€7**
    - mini4real2k6 proves that 50 cards + 1 V/EX has credible demand near €7.
-   - Our Premium is directly positioned here and should differentiate through 7 holo/RH, no Energy filler and themes.
+   - Our Premium is directly positioned here and should differentiate through 7 holo/RH, no Energy filler, theme choice and a sleeved hero.
 
 3. **Gift / presentation bundle — ~€9–10**
    - Onest provides the strongest saved evidence that buyers will consider €10 when tin/coin/sleeves make the product feel like a gift.
@@ -225,18 +271,20 @@ The Rathfarnham 30-card product sits outside these efficient bands: relatively l
 
 ## Strategic conclusion
 
-Our strongest differentiation is not 'more cards'. It is **more child-visible value per card**:
+Our strongest differentiation is **curation and visible shiny density**, not raw card count or being the only low-priced bundle:
 - theme choice;
-- many holo/reverse cards;
+- 9 holo/RH in Standard and 7 holo/RH in Premium;
 - no Energy filler;
 - guaranteed ex/V in Premium;
 - recognizable Pokémon selection;
 - clean presentation and hero-card sleeve;
 - affordable €5 and €7 entry points.
 
-The largest current weakness is **presentation/trust**, not product composition. Onest shows that a tin, coin and established feedback can support a higher price. Therefore the priority before launch should be strong photos, consistent branded/theme labels, tidy packaging, clear guaranteed-content wording, and early buyer feedback.
+The new CzarnyNDM benchmark means the €5 Standard is no longer obviously unbeatable on contents: a trusted seller already offers 50 cards + V at €5. Therefore the Standard needs very clear positioning around **'9 shiny cards'**, theme choice and recognizable Pokémon. Do not add a V to Standard automatically before testing, because that would blur the reason to buy Premium and raise unit cost; instead make at least one recognizable themed Pokémon a visual focal card.
 
-Recommended price architecture for testing:
+The largest overall weakness remains **presentation/trust**. CzarnyNDM and Onest both have established seller reputations, while Onest additionally shows that a tin/coin can support a higher price. Before launch, prioritize strong photos, consistent branded/theme labels, tidy packaging, precise guaranteed-content wording and early buyer feedback.
+
+Recommended price architecture for testing remains:
 - Adverts Standard: €5
 - Adverts Premium: €7
 - Vinted Standard: €5.99 test
