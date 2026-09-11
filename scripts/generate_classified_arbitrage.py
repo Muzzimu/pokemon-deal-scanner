@@ -60,6 +60,75 @@ def _reconcile_cardmarket_net_edges(rows: list[dict], resale_path: Path, cfg: di
         )
 
 
+def _cardtrader_exit_rows(path: Path) -> list[dict]:
+    """Translate v0.8 CardTrader resale rows into the generic arbitrage schema."""
+    out = []
+    for src in _read_csv(path):
+        try:
+            acquisition = float(src.get("acquisition_eur") or 0)
+            gross = float(src.get("best_ct_gross_eur") or 0)
+            net = float(src.get("best_ct_net_eur") or 0)
+            spread = float(src.get("net_spread_eur") or 0)
+            roi = float(src.get("net_roi_pct") or 0)
+        except (TypeError, ValueError):
+            continue
+        if acquisition <= 0 or gross <= 0:
+            continue
+        channel = str(src.get("best_ct_channel") or "CARDTRADER")
+        signal = "POSSIBLE_ARBITRAGE" if src.get("ct_signal") == "RESELL_TEST" else "NO_EDGE"
+        out.append({
+            "snapshot_date": src.get("snapshot_date") or "",
+            "id_product": src.get("id_product") or "",
+            "name": src.get("name") or "",
+            "source_platform": "CARDMARKET",
+            "source_region": "EU_TO_IRELAND",
+            "source_url": "",
+            "source_price": acquisition,
+            "source_currency": "EUR",
+            "fx_to_eur": 1.0,
+            "fx_source": "EUR",
+            "acquisition_eur": acquisition,
+            "friction_reserve_eur": 0.0,
+            "landed_eur": acquisition,
+            "cardmarket_en_nm_eur": "",
+            "cardmarket_trend_eur": "",
+            "ebay_reference_eur": "",
+            "chosen_exit_reference_eur": gross,
+            "reference_type": f"{channel}_ACTIVE_EN_NM_ASK",
+            "reference_strength": src.get("confidence") or "LOW",
+            "estimated_exit_after_costs_eur": net,
+            "net_spread_eur": spread,
+            "net_roi_pct": roi,
+            "exact_printing_verified": 1,
+            "language_status": "EN_CONFIRMED",
+            "condition_status": "NM_CLAIMED",
+            "arbitrage_signal": signal,
+            "confidence": src.get("confidence") or "LOW",
+            "notes": (
+                "v0.8 Cardmarket-to-CardTrader exit route. CardTrader reference is an active "
+                "English/NM competitive ask, not a confirmed sale; net already subtracts configured "
+                "seller commission, VAT and operating reserve."
+            ),
+        })
+    return out
+
+
+def _sort_rows(rows: list[dict]) -> None:
+    order = {
+        "STRONG_ARBITRAGE": 0,
+        "POSSIBLE_ARBITRAGE": 1,
+        "VERIFY_VARIANT": 2,
+        "VERIFY_CONDITION_LANGUAGE": 3,
+        "INSUFFICIENT_REFERENCE": 4,
+        "INSUFFICIENT_FX": 5,
+        "NO_EDGE": 6,
+    }
+    rows.sort(key=lambda r: (
+        order.get(str(r.get("arbitrage_signal")), 99),
+        -(float(r.get("net_spread_eur")) if r.get("net_spread_eur") not in (None, "") else -999999),
+    ))
+
+
 def _write_rows(path: Path, rows: list[dict]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=ARBITRAGE_FIELDS, extrasaction="ignore")
@@ -73,6 +142,7 @@ def main() -> int:
     output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
     watchlist = resolve_path(cfg, cfg["paths"]["gumtree_watchlist"])
     resale_path = output_dir / "resale_candidates.csv"
+    ct_resale_path = output_dir / "cardtrader_resale_candidates.csv"
     gumtree_path = output_dir / "gumtree_candidates.csv"
     arbitrage_path = output_dir / "arbitrage_candidates.csv"
 
@@ -91,8 +161,14 @@ def main() -> int:
         conn, cfg, gumtree_path, resale_path, arbitrage_path, fx=fx, today=date.today()
     )
     _reconcile_cardmarket_net_edges(rows, resale_path, cfg)
+    ct_exit_rows = _cardtrader_exit_rows(ct_resale_path)
+    rows.extend(ct_exit_rows)
+    _sort_rows(rows)
     _write_rows(arbitrage_path, rows)
     arbitrage_status.update({
+        "rows": len(rows),
+        "cardtrader_exit_rows": len(ct_exit_rows),
+        "cardtrader_possible_arbitrage": sum(1 for r in ct_exit_rows if r["arbitrage_signal"] == "POSSIBLE_ARBITRAGE"),
         "strong_arbitrage": sum(1 for r in rows if r["arbitrage_signal"] == "STRONG_ARBITRAGE"),
         "possible_arbitrage": sum(1 for r in rows if r["arbitrage_signal"] == "POSSIBLE_ARBITRAGE"),
         "verify_variant": sum(1 for r in rows if r["arbitrage_signal"] == "VERIFY_VARIANT"),
