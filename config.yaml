@@ -1,4 +1,4 @@
-version: "0.9"
+version: "0.9.1"
 timezone: Europe/Dublin
 
 sources:
@@ -144,9 +144,11 @@ cardmarket_live:
   request_delay_seconds: 12.5
 
 tcgplayer:
-  # TCGplayer is a valuation/liquidity confirmation market only in v0.9.
-  # The normalized reference CSV may be populated manually or by a permitted
-  # external provider. It cannot create a BUY or become an exit route by itself.
+  # v0.9.1 separates transaction evidence from the live order book.
+  # Market Price / recent sales inform GLOBAL transactional fair value and velocity.
+  # Current sellers/quantity and the item+shipping floor describe live US supply only.
+  # Legacy listing_count is audit-only because provider/search counts may not equal the
+  # exact product's current quantity. No TCGplayer field can create an Ireland BUY.
   enabled: true
   role: valuation_liquidity_confirmation
   correlated_us_market_weight: 0.75
