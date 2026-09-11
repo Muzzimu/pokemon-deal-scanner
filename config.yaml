@@ -1,4 +1,4 @@
-version: "0.11"
+version: "0.12"
 timezone: Europe/Dublin
 
 sources:
@@ -145,13 +145,25 @@ cardmarket_live:
   request_delay_seconds: 12.5
 
 tcgplayer:
-  # v0.10+ treats TCGplayer as a US-market reference, not a component of EU fair value.
-  # Market Price/recent sales plus US/global eBay build the US reference used mainly
-  # to test whether a CardTrader premium is credible for cross-border resale.
-  # Current sellers/quantity and item+shipping floor describe live US supply only.
-  # Legacy listing_count is audit-only. No TCGplayer field can create an Ireland BUY.
+  # TCGplayer is a US-market reference, not a component of EU fair value.
+  # v0.12 refreshes its Market Price automatically from TCGCSV when an exact
+  # CardTrader tcg_player_id -> Cardmarket id bridge exists. Conditionless lowPrice
+  # remains context only and cannot become an executable Ireland acquisition floor.
   enabled: true
   role: us_market_confirmation_for_cardtrader_bridge
+
+tcgcsv:
+  enabled: true
+  base_url: https://tcgcsv.com/tcgplayer
+  category_id: 3
+  # TCGCSV asks clients to cache data and avoid aggressive request rates.
+  request_delay_seconds: 0.25
+  timeout_seconds: 30
+  max_catalog_group_requests_per_run: 250
+  # Keep refreshing US marks for old forecasts through the 180d holding horizon.
+  tracking_days: 190
+  reference_strength: MEDIUM
+  user_agent: pokemon-deal-scanner/0.12 (+personal research; TCGCSV cached market data)
 
 market_quality:
   # For an Ireland buyer, legacy LQS/PCS aliases mean EU liquidity / EU price confidence.
