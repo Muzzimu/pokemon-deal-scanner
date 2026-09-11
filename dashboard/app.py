@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import sqlite3
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.yaml"
+SNAPSHOT_PATH = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
 
 
 def load_cfg() -> dict:
@@ -41,6 +43,15 @@ def read_csv(path: Path) -> list[dict]:
         return []
     with path.open(newline="", encoding="utf-8") as fh:
         return [dict(row) for row in csv.DictReader(fh)]
+
+
+def read_snapshot(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 def as_float(value):
@@ -100,6 +111,25 @@ def latest_sync_state(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def latest_outcomes(conn: sqlite3.Connection, pid: int) -> list[dict]:
+    if not table_exists(conn, "model_outcomes"):
+        return []
+    rows = conn.execute(
+        """
+        SELECT snapshot_date, horizon_days, target_scope, window_start, window_end,
+               forecast_value_eur, realised_value_eur, observation_count,
+               evidence_quality, outcome_source, error_pct, abs_error_pct,
+               entry_return_pct, success_flag
+        FROM model_outcomes
+        WHERE id_product=? AND realised_value_eur IS NOT NULL
+        ORDER BY snapshot_date DESC, horizon_days, target_scope
+        LIMIT 100
+        """,
+        (pid,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def choose_columns(rows: list[dict], preferred: list[str]) -> list[dict]:
     if not rows:
         return []
@@ -132,22 +162,43 @@ st.caption("Read-only v0.12 dashboard — display layer only; scanner rules rema
 cfg = load_cfg()
 db_path = resolve_path(cfg, cfg["paths"]["database"])
 output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
+snapshot = read_snapshot(SNAPSHOT_PATH)
+conn: sqlite3.Connection | None = None
 
-try:
+if db_path.exists():
+    # Local/developer mode: inspect the current scanner database directly.
     conn = open_readonly(db_path)
-except FileNotFoundError:
-    st.error(f"Database not found: {db_path}")
-    st.info("Run the scanner first, then refresh this page.")
+    predictions = latest_predictions(conn)
+    routes = read_csv(output_dir / "market_routes.csv")
+    maturity = matured_stats(conn)
+    sync = latest_sync_state(conn)
+    outcomes_by_card: dict[str, list[dict]] = {}
+    data_mode = "Local read-only SQLite"
+    data_updated = predictions[0]["snapshot_date"] if predictions else "unknown"
+elif snapshot:
+    # Hosted mode: no API credentials and no mutable scanner database. GitHub
+    # Actions publishes a whitelisted market/model snapshot after successful runs.
+    predictions = list(snapshot.get("latest_predictions") or [])
+    routes = list(snapshot.get("market_routes") or [])
+    maturity = dict(snapshot.get("maturity") or {})
+    sync = list(snapshot.get("source_sync_state") or [])
+    outcomes_by_card = dict(snapshot.get("latest_outcomes_by_card") or {})
+    data_mode = "Hosted public snapshot"
+    data_updated = str(snapshot.get("generated_at_utc") or "unknown")
+else:
+    st.error("No scanner database or hosted dashboard snapshot is available yet.")
+    st.info("Run the daily scanner once; GitHub Actions will then publish the dashboard snapshot automatically.")
     st.stop()
 
-predictions = latest_predictions(conn)
-routes = read_csv(output_dir / "market_routes.csv")
-maturity = matured_stats(conn)
+for key in ("t7", "t7_cards", "t30", "t30_cards"):
+    maturity[key] = int(maturity.get(key) or 0)
+
+st.caption(f"Data mode: **{data_mode}** · Updated: **{data_updated}**")
 
 tab_today, tab_card, tab_health = st.tabs(["Today", "Card detail", "Model health"])
 
 with tab_today:
-    latest_date = predictions[0]["snapshot_date"] if predictions else "—"
+    latest_date = predictions[0].get("snapshot_date", "—") if predictions else "—"
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Latest forecast", latest_date)
     c2.metric("Cards forecast", len(predictions))
@@ -161,13 +212,13 @@ with tab_today:
             "id_product", "name", "expansion_name", "number", "route_signal",
             "best_validated_buy_eur", "eu_fair_value_eur", "best_sell_channel",
             "best_sell_net_eur", "net_spread_eur", "net_roi_pct",
-            "deal_score", "eu_price_confidence_score", "liquidity_score",
+            "deal_score", "eu_price_confidence_score", "liquidity_score", "eu_liquidity_score",
             "exit_confidence_score", "bridge_opportunity_score",
             "ct_lag_label", "manual_verification_required",
         ]
         st.dataframe(choose_columns(best, preferred), use_container_width=True, hide_index=True)
     else:
-        st.info("No actionable rows found in output/market_routes.csv.")
+        st.info("No actionable routes in the latest snapshot.")
 
     st.subheader("Latest immutable forecasts")
     if predictions:
@@ -192,53 +243,37 @@ with tab_card:
                 f'{row.get("name") or "Unknown"} — {row.get("expansion_name") or "?"} '
                 f'#{row.get("number") or "?"} [{row["id_product"]}]'
             )
-            label_to_pid[label] = row["id_product"]
+            label_to_pid[label] = int(row["id_product"])
         selected = st.selectbox("Card", list(label_to_pid))
         pid = label_to_pid[selected]
-        card = next(r for r in predictions if r["id_product"] == pid)
+        card = next(r for r in predictions if int(r["id_product"]) == pid)
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric(
-            "EU fair value",
-            f'€{card["eu_fair_value_eur"]:.2f}' if card["eu_fair_value_eur"] is not None else "—",
-        )
-        c2.metric(
-            "Validated buy",
-            f'€{card["best_validated_buy_eur"]:.2f}' if card["best_validated_buy_eur"] is not None else "—",
-        )
-        c3.metric("Deal score", f'{card["deal_score"]:.1f}' if card["deal_score"] is not None else "—")
-        c4.metric("Route", card["route_signal"] or "—")
+        eu_fair = as_float(card.get("eu_fair_value_eur"))
+        buy = as_float(card.get("best_validated_buy_eur"))
+        deal = as_float(card.get("deal_score"))
+        c1.metric("EU fair value", f"€{eu_fair:.2f}" if eu_fair is not None else "—")
+        c2.metric("Validated buy", f"€{buy:.2f}" if buy is not None else "—")
+        c3.metric("Deal score", f"{deal:.1f}" if deal is not None else "—")
+        c4.metric("Route", card.get("route_signal") or "—")
 
         s1, s2, s3, s4 = st.columns(4)
-        s1.metric("EU PCS", card["eu_price_confidence_score"] if card["eu_price_confidence_score"] is not None else "—")
-        s2.metric("EU LQS", card["eu_liquidity_score"] if card["eu_liquidity_score"] is not None else "—")
-        s3.metric("ECS", card["exit_confidence_score"] if card["exit_confidence_score"] is not None else "—")
-        s4.metric("BOS", card["bridge_opportunity_score"] if card["bridge_opportunity_score"] is not None else "—")
+        s1.metric("EU PCS", card.get("eu_price_confidence_score") if card.get("eu_price_confidence_score") is not None else "—")
+        s2.metric("EU LQS", card.get("eu_liquidity_score") if card.get("eu_liquidity_score") is not None else "—")
+        s3.metric("ECS", card.get("exit_confidence_score") if card.get("exit_confidence_score") is not None else "—")
+        s4.metric("BOS", card.get("bridge_opportunity_score") if card.get("bridge_opportunity_score") is not None else "—")
 
         matching_routes = [r for r in routes if str(r.get("id_product")) == str(pid)]
         if matching_routes:
             st.subheader("Current route evidence")
             st.dataframe(matching_routes, use_container_width=True, hide_index=True)
 
-        if table_exists(conn, "model_outcomes"):
-            outcomes = conn.execute(
-                """
-                SELECT horizon_days, target_scope, window_start, window_end,
-                       forecast_value_eur, realised_value_eur, observation_count,
-                       evidence_quality, outcome_source, error_pct, abs_error_pct,
-                       entry_return_pct, success_flag
-                FROM model_outcomes
-                WHERE id_product=?
-                ORDER BY snapshot_date DESC, horizon_days, target_scope
-                LIMIT 100
-                """,
-                (pid,),
-            ).fetchall()
-            st.subheader("Matured outcomes")
-            if outcomes:
-                st.dataframe([dict(r) for r in outcomes], use_container_width=True, hide_index=True)
-            else:
-                st.caption("No matured outcomes for this card yet.")
+        outcomes = latest_outcomes(conn, pid) if conn is not None else list(outcomes_by_card.get(str(pid)) or [])
+        st.subheader("Matured outcomes")
+        if outcomes:
+            st.dataframe(outcomes, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No matured outcomes for this card in the current dashboard dataset.")
 
 with tab_health:
     st.subheader("Experience-store maturity")
@@ -258,18 +293,19 @@ with tab_health:
     )
 
     st.subheader("Source sync state")
-    sync = latest_sync_state(conn)
     if sync:
         st.dataframe(sync, use_container_width=True, hide_index=True)
     else:
         st.info("No source_sync_state records found.")
 
-    st.subheader("Files")
+    st.subheader("Dashboard architecture")
     st.write({
-        "database": str(db_path),
-        "market_routes": str(output_dir / "market_routes.csv"),
-        "dashboard_mode": "read-only",
-        "scanner_version": str(cfg.get("version") or "unknown"),
+        "mode": data_mode,
+        "scanner_version": str(snapshot.get("scanner_version") if conn is None else cfg.get("version") or "unknown"),
+        "pricing_logic_in_ui": False,
+        "mutations_allowed": False,
+        "hosted_snapshot": "dashboard/data/dashboard_snapshot.json",
     })
 
-conn.close()
+if conn is not None:
+    conn.close()
