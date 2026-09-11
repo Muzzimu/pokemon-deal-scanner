@@ -70,9 +70,6 @@ cardtrader:
   actionable_en_nm_max_eur: 0.60
   candidate_generic_low_max_eur: 1.00
   max_candidate_products: 400
-  # In addition to cheap/popular discovery candidates, always bring a bounded
-  # set of validated Cardmarket sourcing products into the CT marketplace sync so
-  # the route engine can evaluate Cardmarket -> CardTrader exits on the same run.
   resale_validated_product_limit: 250
   auto_bootstrap_if_empty: true
   marketplace_delay_seconds: 1.05
@@ -80,26 +77,16 @@ cardtrader:
 
 cardtrader_resale:
   enabled: true
-  # Conservative post-March-2026 EU seller rates. VAT is added to the commission
-  # by CardTrader; 23% is the Ireland-tuned planning default. Change these values
-  # if the account qualifies for grandfathered rates or different VAT treatment.
   direct_fee_pct: 5.3
   zero_fee_pct: 7.3
   fee_vat_pct: 23.0
   minimum_fee_eur: 0.01
-  # Active marketplace asks are not sold prices. The model assumes a listing just
-  # below the current English/NM competitive floor and requires seller depth.
   undercut_eur: 0.01
   minimum_competing_sellers: 2
-  # Small configurable planning reserves prevent Direct packaging and weekly Zero
-  # hub shipment from being silently treated as free. They are not platform fees.
   direct_operational_reserve_eur: 0.15
   zero_operational_reserve_eur: 0.50
-  # Fallback thresholds for any acquisition cost not covered by a price band.
   minimum_net_spread_eur: 2.00
   minimum_net_roi_pct: 25.0
-  # Capital/risk-sensitive gates. Higher-value cards need larger absolute profit
-  # even when percentage ROI still looks attractive.
   price_bands:
     - label: MICRO_0_10
       max_acquisition_eur: 10
@@ -121,19 +108,11 @@ cardtrader_resale:
       max_acquisition_eur: null
       min_net_spread_eur: 25.00
       min_net_roi_pct: 20.0
-  # Above this acquisition cost an otherwise-valid edge is watch-only until a
-  # human checks photos/condition/variant and the exact exit route.
   manual_verify_above_eur: 100.0
-  # Used only when comparing CT net proceeds with the existing eBay exit route.
   ebay_exit_cost_pct: 8.0
-  # Populate if the user's own CardTrader seller account later appears in the
-  # marketplace feed; self-listings must never establish the competitive floor.
   excluded_seller_usernames: []
 
 core_watch:
-  # Dynamic liquid-card universe built from cards for which we already have
-  # validated sourcing and CT coverage. It is deliberately evidence-driven rather
-  # than a hard-coded list of famous Pokemon.
   min_reference_value_eur: 15.0
   max_reference_value_eur: 120.0
   minimum_ct_sellers: 2
@@ -142,9 +121,7 @@ core_watch:
   max_rows: 100
 
 cardmarket_live:
-  # v0.8.2: targeted live-offer validation. The production baseline remains the
-  # official Cardmarket catalogue/price-guide downloads. This layer only checks a
-  # small number of high-priority Core-watch gaps through an external REST provider.
+  # Targeted live validation only after the cheap official-feed/CT/eBay screening.
   enabled: true
   provider: parsebot
   api_key_env: PARSE_API_KEY
@@ -153,7 +130,10 @@ cardmarket_live:
   game: Pokemon
   language: English
   min_condition: NM
-  max_candidates_per_run: 20
+  # Parse currently prices get_card_listings at 2 credits/call. Three daily checks
+  # consume about 180 credits in a 30-day month, fitting its current 200-credit free
+  # tier with a small buffer. Raise this only when using a paid plan.
+  max_candidates_per_run: 3
   watch_priorities:
     - A
     - B
@@ -163,8 +143,6 @@ cardmarket_live:
   stale_upward_pct: 10.0
   cheaper_candidate_pct: 10.0
   timeout_seconds: 30
-  # Conservative enough for Parse's current free-tier 5 req/min limit; reduce only
-  # if the connected plan explicitly permits a higher request rate.
   request_delay_seconds: 12.5
 
 sourcing:
@@ -172,8 +150,6 @@ sourcing:
   required_condition: NM
   required_destination: Ireland
   seller_risk_max_penalty_eur: 1.50
-  # Planning floor: median of the cheapest N eligible offers after filtering out
-  # very small seller histories. Individual low offers are still visible/actionable.
   robust_floor_sample_size: 3
   robust_floor_min_samples: 2
   robust_floor_min_seller_sales: 10
@@ -188,8 +164,6 @@ seller_baskets:
   max_report_rows: 100
 
 local_cherry_pick:
-  # Discovery must come from user-supplied pages or third-party public search
-  # indexes/archives; do not directly crawl Adverts.ie.
   required_language: en
   required_condition: NM
   minimum_discount_pct: 20.0
@@ -198,11 +172,6 @@ local_cherry_pick:
   default_postage_eur: 2.00
   default_postage_up_to_cards: 10
   require_verified_en_nm_reference: true
-  # Dense binder/photo listings are prone to look-alike printings. Never issue a
-  # BUY/deal signal from visual resemblance alone: verify the exact printing first.
-  # At minimum confirm set + collector number and any value-changing variant such
-  # as holo/non-holo, reverse, stamp/promo, language or edition. If the photo is too
-  # unclear, label the identification uncertain and ask for a close-up/card number.
   require_exact_printing_before_price_signal: true
   uncertain_identification_action: watch_only
   identification_required_fields:
@@ -250,8 +219,6 @@ bundles:
   max_validated_en_nm_cost_eur: 16.00
 
 ebay:
-  # Optional live source. If credentials are absent the scanner still runs and can
-  # consume manually recorded sold evidence without inventing a live eBay price.
   enabled: true
   app_id_env: EBAY_APP_ID
   cert_id_env: EBAY_CERT_ID
@@ -302,10 +269,6 @@ resale:
   minimum_gross_roi_pct: 25.0
 
 market_signals:
-  # Uses Cardmarket price history plus the existing eBay observatory. Available
-  # supply is the count of exact matched raw eBay listings, not Cardmarket's total
-  # offer count. The first 30 days therefore build a baseline before supply and
-  # cross-market trend confidence can become HIGH.
   event_lookback_days: 30
   neutral_price_move_pct: 3.0
   strong_price_move_pct: 10.0
@@ -319,8 +282,6 @@ gumtree:
   timeout_seconds: 20
   max_watch_products: 25
   max_listing_price_gbp: 5000
-  # Broad discovery remains non-actionable until exact printing, language and
-  # condition are verified. Exact watch searches are run separately for NI and UK.
   discovery_sources:
     - region: NORTHERN_IRELAND
       query: pokemon cards
@@ -333,16 +294,12 @@ gumtree:
     GREAT_BRITAIN: uk
 
 fx:
-  # Frankfurter publishes ECB-derived daily FX. Fallbacks keep reports usable if
-  # the endpoint is unavailable, but fallback FX can never create STRONG_ARBITRAGE.
   url: https://api.frankfurter.app/latest?from=EUR&to=GBP,USD
   timeout_seconds: 10
   fallback_gbp_to_eur: 1.16
   fallback_usd_to_eur: 0.86
 
 arbitrage:
-  # Net edge after a conservative exit-cost reserve. These are planning reserves,
-  # not assertions about tax/customs/postage obligations for a specific trade.
   minimum_net_spread_eur: 8.0
   minimum_net_roi_pct: 25.0
   exit_cost_pct: 8.0
@@ -358,8 +315,6 @@ arbitrage:
       friction_pct: 10.0
 
 history_retention:
-  # Inspired by mature collection trackers: keep detail where it matters without
-  # allowing the cached SQLite database to grow without bound.
   cardmarket_daily_days: 90
   cardmarket_weekly_until_days: 365
   cardtrader_raw_offer_days: 30
