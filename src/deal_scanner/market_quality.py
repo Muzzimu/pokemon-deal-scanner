@@ -9,9 +9,17 @@ from pathlib import Path
 
 QUALITY_FIELDS = [
     "snapshot_date", "id_product", "name", "expansion_name", "number",
-    "fair_value_eur", "cross_market_dispersion_pct", "independent_market_count",
-    "tcgplayer_market_eur", "tcgplayer_low_eur", "tcgplayer_sales_30d",
-    "tcgplayer_listing_count", "tcgplayer_strength", "tcgplayer_vs_fair_pct",
+    "fair_value_eur", "fair_value_scope", "eu_executable_value_eur", "eu_executable_source",
+    "cross_market_dispersion_pct", "independent_market_count",
+    "tcgplayer_market_eur", "tcgplayer_recent_sale_eur",
+    "tcgplayer_executable_floor_eur", "tcgplayer_item_floor_eur", "tcgplayer_shipping_floor_eur",
+    "tcgplayer_market_to_executable_gap_pct", "tcgplayer_recent_sale_vs_market_pct",
+    "tcgplayer_sales_30d", "tcgplayer_sales_90d", "tcgplayer_avg_daily_sold",
+    "tcgplayer_monthly_sales_equiv", "tcgplayer_current_quantity", "tcgplayer_current_sellers",
+    "tcgplayer_supply_coverage_days", "tcgplayer_supply_state",
+    # Legacy/provider-ambiguous fields remain visible for audit but are not used as exact depth.
+    "tcgplayer_low_eur", "tcgplayer_listing_count",
+    "tcgplayer_strength", "tcgplayer_vs_fair_pct",
     "liquidity_score", "liquidity_label", "price_confidence_score",
     "price_confidence_label", "exit_confidence_score", "exit_confidence_label",
     "quality_gate_pass", "quality_gate_profile", "quality_gate_reason",
@@ -101,6 +109,14 @@ def _label(score: int, bands: tuple[tuple[int, str], ...]) -> str:
     return bands[-1][1]
 
 
+def _eur(raw: dict, eur_key: str, usd_key: str, fx: float) -> float | None:
+    direct = _float(raw.get(eur_key))
+    if direct is not None:
+        return round(direct, 2)
+    usd = _float(raw.get(usd_key))
+    return None if usd is None else round(usd * fx, 2)
+
+
 def _best_tcg_rows(path: Path, cfg: dict) -> dict[str, dict]:
     rows, _ = _read_csv(path)
     fallback_usd_to_eur = float(cfg.get("fx", {}).get("fallback_usd_to_eur", 0.86))
@@ -110,21 +126,25 @@ def _best_tcg_rows(path: Path, cfg: dict) -> dict[str, dict]:
         pid = str(raw.get("id_product") or "").strip()
         if not pid:
             continue
-        market_eur = _float(raw.get("market_price_eur"))
-        low_eur = _float(raw.get("low_price_eur"))
-        fx = _float(raw.get("fx_usd_to_eur")) or fallback_usd_to_eur
-        fx_source = "ROW" if _float(raw.get("fx_usd_to_eur")) else "CONFIG_FALLBACK"
-        if market_eur is None:
-            usd = _float(raw.get("market_price_usd"))
-            market_eur = None if usd is None else round(usd * fx, 2)
-        if low_eur is None:
-            usd = _float(raw.get("low_price_usd"))
-            low_eur = None if usd is None else round(usd * fx, 2)
+        fx_row = _float(raw.get("fx_usd_to_eur"))
+        fx = fx_row or fallback_usd_to_eur
+        market_eur = _eur(raw, "market_price_eur", "market_price_usd", fx)
+        recent_sale_eur = _eur(raw, "most_recent_sale_eur", "most_recent_sale_usd", fx)
+        item_floor_eur = _eur(raw, "lowest_listing_price_eur", "lowest_listing_price_usd", fx)
+        shipping_floor_eur = _eur(raw, "lowest_listing_shipping_eur", "lowest_listing_shipping_usd", fx)
+        executable_floor_eur = _eur(raw, "executable_floor_eur", "executable_floor_usd", fx)
+        if executable_floor_eur is None and item_floor_eur is not None and shipping_floor_eur is not None:
+            executable_floor_eur = round(item_floor_eur + shipping_floor_eur, 2)
+        low_eur = _eur(raw, "low_price_eur", "low_price_usd", fx)
         row = {
             **raw,
             "_market_eur": market_eur,
+            "_recent_sale_eur": recent_sale_eur,
+            "_item_floor_eur": item_floor_eur,
+            "_shipping_floor_eur": shipping_floor_eur,
+            "_executable_floor_eur": executable_floor_eur,
             "_low_eur": low_eur,
-            "_fx_source": fx_source,
+            "_fx_source": "ROW" if fx_row else "CONFIG_FALLBACK",
         }
         current = out.get(pid)
         if current is None:
@@ -137,6 +157,46 @@ def _best_tcg_rows(path: Path, cfg: dict) -> dict[str, dict]:
         if new_rank < old_rank or (new_rank == old_rank and new_date > old_date):
             out[pid] = row
     return out
+
+
+def _tcg_monthly_sales(tcg: dict | None) -> float:
+    if not tcg:
+        return 0.0
+    sales30 = _float(tcg.get("sales_30d"))
+    if sales30 is not None and sales30 >= 0:
+        return sales30
+    sales90 = _float(tcg.get("sales_90d"))
+    if sales90 is not None and sales90 >= 0:
+        return sales90 / 3.0
+    daily = _float(tcg.get("avg_daily_sold"))
+    if daily is not None and daily >= 0:
+        return daily * 30.0
+    return 0.0
+
+
+def _tcg_supply_metrics(tcg: dict | None) -> tuple[float | None, str]:
+    if not tcg:
+        return None, "UNKNOWN"
+    qty = _float(tcg.get("current_quantity"))
+    monthly = _tcg_monthly_sales(tcg)
+    sellers = _int(tcg.get("current_sellers"))
+    if qty is None:
+        return None, "UNKNOWN"
+    if qty <= 0:
+        return 0.0, "NO_LIVE_SUPPLY"
+    if monthly <= 0:
+        return None, "DEPTH_ONLY"
+    daily_velocity = monthly / 30.0
+    coverage_days = round(qty / daily_velocity, 1) if daily_velocity > 0 else None
+    if coverage_days is None:
+        return None, "UNKNOWN"
+    if coverage_days <= 7 or (sellers <= 2 and coverage_days <= 14):
+        state = "TIGHT"
+    elif coverage_days <= 30:
+        state = "BALANCED"
+    else:
+        state = "DEEP"
+    return coverage_days, state
 
 
 def _best_ebay_rows(path: Path) -> dict[str, dict]:
@@ -176,7 +236,27 @@ def _ct_map(path: Path) -> dict[str, dict]:
     return {str(r.get("id_product") or ""): r for r in rows if r.get("id_product")}
 
 
+def _eu_executable_value(route: dict) -> tuple[float | None, str]:
+    """Return current European EN/NM replacement context only when live CM depth exists.
+
+    A validated historical/deal-specific buy price is intentionally not promoted to a
+    general European replacement value. Live Cardmarket article prices remain asks,
+    not sold-price fair value, and shipping still needs separate treatment for a BUY.
+    """
+    robust = _float(route.get("cm_live_robust_floor_eur"))
+    sellers = _int(route.get("cm_live_sellers"))
+    if robust is not None and robust > 0 and sellers >= 2:
+        return robust, "CARDMARKET_LIVE_EN_NM_ARTICLE"
+    return None, ""
+
+
 def _market_points(route: dict, ct: dict | None, tcg: dict | None, ebay: dict | None) -> list[tuple[float, float, str]]:
+    """Build GLOBAL TRANSACTIONAL fair-value points.
+
+    Current executable asks (TCGplayer live floor / live Cardmarket floor) are kept
+    outside this set. This prevents a temporary supply squeeze from being confused
+    with realized fair value while still exposing replacement-value context separately.
+    """
     points: list[tuple[float, float, str]] = []
     cm = _float(route.get("cardmarket_trend_eur"))
     if cm and cm > 0:
@@ -208,20 +288,29 @@ def _liquidity_score(route: dict, ct: dict | None, tcg: dict | None, ebay: dict 
                      fair_value: float | None, dispersion_pct: float | None) -> tuple[int, dict]:
     ebay_confirmed = _int((ebay or {}).get("confirmed_sales"))
     ebay_inferred = _int((ebay or {}).get("inferred_sales"))
-    tcg_sales = _int((tcg or {}).get("sales_30d"))
-    total_sales = ebay_confirmed + tcg_sales + int(round(0.5 * ebay_inferred))
+    tcg_monthly = _tcg_monthly_sales(tcg)
+    total_sales = ebay_confirmed + tcg_monthly + 0.5 * ebay_inferred
     velocity = 0.0 if total_sales <= 0 else min(30.0, 30.0 * math.log1p(total_sales) / math.log1p(20))
 
-    sellers = units = 0
+    ct_sellers = ct_units = 0
     if ct:
         if str(ct.get("best_ct_channel")) == "CARDTRADER_ZERO":
-            sellers = _int(ct.get("ct_zero_sellers"))
-            units = _int(ct.get("ct_zero_units"))
+            ct_sellers = _int(ct.get("ct_zero_sellers"))
+            ct_units = _int(ct.get("ct_zero_units"))
         else:
-            sellers = _int(ct.get("ct_direct_sellers"))
-            units = _int(ct.get("ct_direct_units"))
-    tcg_listings = _int((tcg or {}).get("listing_count"))
-    depth = min(12.0, sellers / 5.0 * 12.0) + min(6.0, units / 12.0 * 6.0) + min(7.0, tcg_listings / 20.0 * 7.0)
+            ct_sellers = _int(ct.get("ct_direct_sellers"))
+            ct_units = _int(ct.get("ct_direct_units"))
+
+    # TCGplayer depth now uses exact-product CURRENT sellers/quantity only. The
+    # legacy listing_count field may be a search-result count and is never used here.
+    tcg_sellers = _int((tcg or {}).get("current_sellers"))
+    tcg_qty = _int((tcg or {}).get("current_quantity"))
+    depth = (
+        min(12.0, ct_sellers / 5.0 * 12.0)
+        + min(6.0, ct_units / 12.0 * 6.0)
+        + min(4.0, tcg_sellers / 4.0 * 4.0)
+        + min(3.0, tcg_qty / 12.0 * 3.0)
+    )
 
     if dispersion_pct is None:
         spread = 0.0
@@ -244,18 +333,19 @@ def _liquidity_score(route: dict, ct: dict | None, tcg: dict | None, ebay: dict 
     if _float(route.get("ebay_expected_eur")):
         effective_breadth += 1.0
     if tcg and _float(tcg.get("_market_eur")):
-        effective_breadth += 0.75  # correlated with US/eBay demand, so not a full independent vote
+        effective_breadth += 0.75  # correlated with US/eBay demand, not a full independent vote
     breadth = min(15.0, 15.0 * effective_breadth / 3.75)
 
-    if ebay_confirmed + tcg_sales >= 10:
+    realized_velocity = ebay_confirmed + tcg_monthly
+    if realized_velocity >= 10:
         immediacy = 10.0
-    elif ebay_confirmed + tcg_sales >= 5:
+    elif realized_velocity >= 5:
         immediacy = 8.0
-    elif ebay_confirmed + tcg_sales >= 2:
+    elif realized_velocity >= 2:
         immediacy = 6.0
-    elif ebay_confirmed + tcg_sales >= 1:
+    elif realized_velocity >= 1:
         immediacy = 4.0
-    elif sellers >= 3:
+    elif ct_sellers >= 3 or tcg_sellers >= 3:
         immediacy = 2.0
     else:
         immediacy = 0.0
@@ -278,9 +368,8 @@ def _price_confidence_score(route: dict, tcg: dict | None, ebay: dict | None,
         convergence *= min(1.0, source_count / 3.0)
 
     ebay_strength = str((ebay or {}).get("strength") or "NONE").upper()
-    ebay_confirmed = _int((ebay or {}).get("confirmed_sales"))
     tcg_strength = str((tcg or {}).get("reference_strength") or "NONE").upper()
-    tcg_sales = _int((tcg or {}).get("sales_30d"))
+    tcg_monthly = _tcg_monthly_sales(tcg)
     transaction = 0.0
     if ebay_strength == "STRONG":
         transaction += 15.0
@@ -288,7 +377,11 @@ def _price_confidence_score(route: dict, tcg: dict | None, ebay: dict | None,
         transaction += 10.0
     elif ebay_strength in {"WEAK", "VERY_WEAK"}:
         transaction += 3.0
-    transaction += min(10.0, 10.0 * math.log1p(tcg_sales) / math.log1p(15)) if tcg_sales > 0 else ({"STRONG": 3.0, "MEDIUM": 2.0}.get(tcg_strength, 0.0))
+    transaction += (
+        min(10.0, 10.0 * math.log1p(tcg_monthly) / math.log1p(15))
+        if tcg_monthly > 0
+        else {"STRONG": 3.0, "MEDIUM": 2.0}.get(tcg_strength, 0.0)
+    )
     transaction = min(25.0, transaction)
 
     freshness = 5.0  # daily Cardmarket feed is the baseline
@@ -332,6 +425,8 @@ def _exit_confidence_score(route: dict, ct: dict | None, ebay: dict | None,
         ebay_price = _float(route.get("ebay_expected_eur"))
         if ebay_price:
             confirmations.append(abs(ebay_price / gross - 1.0) * 100.0)
+        # Use TCGplayer TRANSACTION market price for exit confirmation. The live
+        # executable ask is supply context and must not validate a high CT exit by itself.
         tcg_price = _float((tcg or {}).get("_market_eur"))
         if tcg_price:
             confirmations.append(abs(tcg_price / gross - 1.0) * 100.0)
@@ -390,9 +485,9 @@ def apply_market_quality(
 ) -> dict:
     """Apply financial-market-style liquidity, fair-value and exit-confidence scores.
 
-    TCGplayer is a supporting valuation/liquidity market only. Its evidence can
-    confirm or challenge a CardTrader exit price, but it never creates a sourcing
-    BUY or becomes the selected exit channel in this function.
+    TCGplayer transaction price/velocity confirms global fair value and liquidity.
+    Its current listing floor/seller depth is stored separately as live supply context.
+    Neither can create an Ireland-landed BUY or become the selected exit by itself.
     """
     today = today or date.today()
     route_rows, route_fields = _read_csv(route_path)
@@ -421,17 +516,26 @@ def apply_market_quality(
         dispersion = _weighted_mad_pct(weighted, fair)
         sources = {name for _, _, name in raw_points}
 
-        lqs, lparts = _liquidity_score(row, ct_row, tcg_row, ebay_row, fair, dispersion)
-        pcs, pparts = _price_confidence_score(
+        lqs, _ = _liquidity_score(row, ct_row, tcg_row, ebay_row, fair, dispersion)
+        pcs, _ = _price_confidence_score(
             row, tcg_row, ebay_row, mappings.get(pid), lqs, dispersion, len(sources), today
         )
-        ecs, eparts = _exit_confidence_score(row, ct_row, ebay_row, fair, lqs, tcg_row)
+        ecs, _ = _exit_confidence_score(row, ct_row, ebay_row, fair, lqs, tcg_row)
         acquisition = _float(row.get("best_validated_buy_eur"))
         gate_pass, profile, gate_reason = _gate(acquisition, lqs, pcs, ecs, cfg)
 
+        eu_exec, eu_exec_source = _eu_executable_value(row)
         tcg_market = _float((tcg_row or {}).get("_market_eur"))
+        tcg_recent = _float((tcg_row or {}).get("_recent_sale_eur"))
+        tcg_exec = _float((tcg_row or {}).get("_executable_floor_eur"))
+        tcg_item = _float((tcg_row or {}).get("_item_floor_eur"))
+        tcg_ship = _float((tcg_row or {}).get("_shipping_floor_eur"))
         tcg_low = _float((tcg_row or {}).get("_low_eur"))
         tcg_vs_fair = None if tcg_market is None or fair in (None, 0) else round((tcg_market / fair - 1.0) * 100.0, 1)
+        market_exec_gap = None if tcg_market in (None, 0) or tcg_exec is None else round((tcg_exec / tcg_market - 1.0) * 100.0, 1)
+        recent_vs_market = None if tcg_market in (None, 0) or tcg_recent is None else round((tcg_recent / tcg_market - 1.0) * 100.0, 1)
+        monthly_sales = _tcg_monthly_sales(tcg_row)
+        coverage_days, supply_state = _tcg_supply_metrics(tcg_row)
 
         quality = {
             "snapshot_date": row.get("snapshot_date") or today.isoformat(),
@@ -440,11 +544,27 @@ def apply_market_quality(
             "expansion_name": row.get("expansion_name") or "",
             "number": row.get("number") or "",
             "fair_value_eur": fair if fair is not None else "",
+            "fair_value_scope": "GLOBAL_TRANSACTIONAL",
+            "eu_executable_value_eur": eu_exec if eu_exec is not None else "",
+            "eu_executable_source": eu_exec_source,
             "cross_market_dispersion_pct": "" if dispersion is None else round(dispersion, 1),
             "independent_market_count": len(sources),
             "tcgplayer_market_eur": tcg_market if tcg_market is not None else "",
-            "tcgplayer_low_eur": tcg_low if tcg_low is not None else "",
+            "tcgplayer_recent_sale_eur": tcg_recent if tcg_recent is not None else "",
+            "tcgplayer_executable_floor_eur": tcg_exec if tcg_exec is not None else "",
+            "tcgplayer_item_floor_eur": tcg_item if tcg_item is not None else "",
+            "tcgplayer_shipping_floor_eur": tcg_ship if tcg_ship is not None else "",
+            "tcgplayer_market_to_executable_gap_pct": "" if market_exec_gap is None else market_exec_gap,
+            "tcgplayer_recent_sale_vs_market_pct": "" if recent_vs_market is None else recent_vs_market,
             "tcgplayer_sales_30d": _int((tcg_row or {}).get("sales_30d")),
+            "tcgplayer_sales_90d": _int((tcg_row or {}).get("sales_90d")),
+            "tcgplayer_avg_daily_sold": _float((tcg_row or {}).get("avg_daily_sold")) or 0,
+            "tcgplayer_monthly_sales_equiv": round(monthly_sales, 1),
+            "tcgplayer_current_quantity": _int((tcg_row or {}).get("current_quantity")),
+            "tcgplayer_current_sellers": _int((tcg_row or {}).get("current_sellers")),
+            "tcgplayer_supply_coverage_days": "" if coverage_days is None else coverage_days,
+            "tcgplayer_supply_state": supply_state,
+            "tcgplayer_low_eur": tcg_low if tcg_low is not None else "",
             "tcgplayer_listing_count": _int((tcg_row or {}).get("listing_count")),
             "tcgplayer_strength": str((tcg_row or {}).get("reference_strength") or "NONE").upper(),
             "tcgplayer_vs_fair_pct": "" if tcg_vs_fair is None else tcg_vs_fair,
@@ -493,5 +613,5 @@ def apply_market_quality(
         "routes_with_tcgplayer_evidence": tcg_used,
         "routes_downgraded_by_quality_gate": downgraded,
         "output": str(output_path),
-        "policy": "TCGplayer confirms/challenges fair value and liquidity; it cannot create a BUY or exit route by itself.",
+        "policy": "TCGplayer transaction price/velocity informs global fair value and liquidity; exact live quantity/sellers/executable floor remain separate supply context and cannot create an Ireland BUY.",
     }
