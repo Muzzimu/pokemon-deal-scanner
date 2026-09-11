@@ -12,6 +12,7 @@ from deal_scanner.arbitrage import build_arbitrage_report, fetch_fx_rates, write
 from deal_scanner.config import load_config, resolve_path
 from deal_scanner.db import connect
 from deal_scanner.gumtree import scan_gumtree
+from deal_scanner.gumtree_catalog_match import enrich_gumtree_catalog_matches
 
 
 def main() -> int:
@@ -20,20 +21,27 @@ def main() -> int:
     output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
     watchlist = resolve_path(cfg, cfg["paths"]["gumtree_watchlist"])
     resale_path = output_dir / "resale_candidates.csv"
+    gumtree_path = output_dir / "gumtree_candidates.csv"
 
     conn = connect(db_path)
     gumtree_status = scan_gumtree(
         conn,
         cfg,
         watchlist,
-        output_dir / "gumtree_candidates.csv",
+        gumtree_path,
         today=date.today(),
     )
+    catalog_status = enrich_gumtree_catalog_matches(conn, gumtree_path)
+    gumtree_status["catalog_match"] = catalog_status
+    gumtree_status["exact_match_rows"] = int(gumtree_status.get("exact_match_rows") or 0) + int(
+        catalog_status.get("new_exact_matches") or 0
+    )
+
     fx = fetch_fx_rates(cfg)
     rows, arbitrage_status = build_arbitrage_report(
         conn,
         cfg,
-        output_dir / "gumtree_candidates.csv",
+        gumtree_path,
         resale_path,
         output_dir / "arbitrage_candidates.csv",
         fx=fx,
