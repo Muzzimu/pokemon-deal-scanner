@@ -41,10 +41,16 @@ from deal_scanner.maintenance import compact_history
 from deal_scanner.mapping_audit import apply_cardtrader_mapping_guard
 from deal_scanner.market_observatory import generate_resale_candidates, run_ebay_observatory
 from deal_scanner.market_quality import apply_market_quality
-from deal_scanner.model_validation import run_model_validation
+from deal_scanner.model_validation import ensure_model_validation_schema, run_model_validation
 from deal_scanner.reports import generate_reports
 from deal_scanner.route_intelligence import apply_route_intelligence
 from deal_scanner.sourcing import generate_cardmarket_sourcing_report
+from deal_scanner.tcgcsv import (
+    ensure_tcgcsv_schema,
+    publish_tcgcsv_model_observations,
+    refresh_tcgcsv_reference,
+    sync_tcgplayer_ids_from_blueprints,
+)
 
 
 def refresh_catalog_needed(cfg, archive_dir: Path, today: date) -> bool:
@@ -59,7 +65,7 @@ def bootstrap_cardtrader(conn, client: CardTraderClient) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     payload = client.expansions()
     exps = pokemon_expansions(payload)
-    bp_count = map_count = exp_count = 0
+    bp_count = map_count = exp_count = tcgplayer_links = 0
     for e in exps:
         eid = expansion_id(e)
         if eid is None:
@@ -68,11 +74,17 @@ def bootstrap_cardtrader(conn, client: CardTraderClient) -> dict:
         b, m = upsert_cardtrader_blueprints(
             conn, bps, expansion_id=eid, expansion_name=expansion_name(e), updated_at=now
         )
+        tcgplayer_links += sync_tcgplayer_ids_from_blueprints(conn, bps)
         exp_count += 1
         bp_count += b
         map_count += m
     set_sync_state(conn, "cardtrader_blueprint_bootstrap", now, now)
-    return {"expansions": exp_count, "blueprints": bp_count, "mappings": map_count}
+    return {
+        "expansions": exp_count,
+        "blueprints": bp_count,
+        "mappings": map_count,
+        "tcgplayer_id_links": tcgplayer_links,
+    }
 
 
 def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str) -> dict:
@@ -97,8 +109,14 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
     expansion_ids = expansion_ids_for_products(conn, candidate_ids)
     inserted = 0
     queried = 0
+    tcgplayer_links = 0
     candidate_set = set(candidate_ids)
     for eid in expansion_ids:
+        # Refresh CardTrader's explicit TCGplayer product ids for the expansions we
+        # already query. This is the exact-id bridge used by TCGCSV; no name matching.
+        bps = blueprint_rows(client.blueprints(eid))
+        tcgplayer_links += sync_tcgplayer_ids_from_blueprints(conn, bps)
+
         bpmap = blueprint_product_map_for_expansion(conn, eid)
         payload = client.marketplace(eid, language=cfg["cardtrader"]["language"])
         normalized = normalize_marketplace(payload, bpmap)
@@ -111,6 +129,7 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
         "validated_resale_products": len(validated_ids),
         "validated_resale_products_added": len(set(validated_ids) - set(discovery_ids)),
         "expansions_queried": queried,
+        "tcgplayer_id_links_refreshed": tcgplayer_links,
         "offer_rows_inserted": inserted,
     }
 
@@ -122,6 +141,7 @@ def main() -> int:
     ap.add_argument("--no-archive", action="store_true", help="Use temporary Cardmarket downloads instead of raw archive")
     ap.add_argument("--skip-cardtrader", action="store_true")
     ap.add_argument("--skip-ebay", action="store_true")
+    ap.add_argument("--skip-tcgcsv", action="store_true")
     ap.add_argument("--bootstrap-cardtrader", action="store_true", help="Force Blueprint-map refresh before marketplace sync")
     args = ap.parse_args()
 
@@ -139,6 +159,8 @@ def main() -> int:
     tcgplayer_reference_csv = resolve_path(cfg, cfg["paths"]["tcgplayer_market_reference"])
     mapping_override_csv = ROOT / "data" / "reference" / "cardtrader_mapping_overrides.csv"
     conn = connect(db_path)
+    ensure_tcgcsv_schema(conn)
+    ensure_model_validation_schema(conn)
 
     archive_dir = None if args.no_archive else raw_dir
     if args.demo:
@@ -180,11 +202,15 @@ def main() -> int:
             conn, bps, expansion_id=999001, expansion_name="Demo Expansion",
             updated_at=datetime.now(timezone.utc).isoformat(),
         )
+        tcg_links = sync_tcgplayer_ids_from_blueprints(conn, bps)
         market_payload = json.loads((fixtures / "cardtrader_marketplace_demo.json").read_text(encoding="utf-8"))
         bpmap = blueprint_product_map_for_expansion(conn, 999001)
         normalized = normalize_marketplace(market_payload, bpmap)
         offers = insert_cardtrader_offers(conn, normalized, today_s)
-        cardtrader_status = {"enabled": True, "mode": "demo", "blueprints": b, "mappings": m, "offer_rows": offers}
+        cardtrader_status = {
+            "enabled": True, "mode": "demo", "blueprints": b, "mappings": m,
+            "tcgplayer_id_links": tcg_links, "offer_rows": offers,
+        }
     elif not args.skip_cardtrader and cfg.get("cardtrader", {}).get("enabled", True):
         token = os.environ.get(cfg["cardtrader"]["token_env"])
         if token:
@@ -252,6 +278,28 @@ def main() -> int:
         output_dir / "core_watch_universe.csv",
     )
 
+    # v0.12: no-key TCGCSV integration. CardTrader's explicit tcg_player_id is the
+    # only accepted CM<->TCGplayer bridge. TCGCSV Market Price is a US reference;
+    # conditionless lowPrice never becomes an executable Ireland acquisition floor.
+    if args.demo or args.skip_tcgcsv:
+        tcgcsv_status = {
+            "enabled": False,
+            "reason": "demo mode" if args.demo else "--skip-tcgcsv",
+        }
+        tcgcsv_model_observations = 0
+    else:
+        tcgcsv_status = refresh_tcgcsv_reference(
+            conn,
+            cfg,
+            [output_dir / "market_routes.csv", output_dir / "core_watch_universe.csv"],
+            tcgplayer_reference_csv,
+            output_dir / "tcgcsv_market_reference.csv",
+            output_dir / "tcgcsv_mapping_audit.csv",
+            today=today,
+        )
+        tcgcsv_model_observations = publish_tcgcsv_model_observations(conn, cfg, today)
+        tcgcsv_status["model_observations_published"] = tcgcsv_model_observations
+
     if args.demo:
         cardmarket_live_status = {"enabled": False, "reason": "demo mode", "queried": 0, "rows": 0}
     else:
@@ -280,10 +328,9 @@ def main() -> int:
         today=today,
     )
 
-    # v0.11: immutable daily forecasts + walk-forward outcomes. The first successful
-    # snapshot in each ISO week is the non-overlapping benchmark cohort. Daily rolling
-    # snapshots are retained for research. 1-30d calibrate fair value; 90/180d are
-    # holding diagnostics and never automatically reweight the short-horizon model.
+    # v0.11+: immutable daily forecasts + walk-forward outcomes. The first successful
+    # snapshot in each ISO week is the benchmark cohort. TCGCSV US Market Price marks
+    # are available as explicitly labelled proxies, never as confirmed realised sales.
     model_validation_status = run_model_validation(
         conn,
         cfg,
@@ -312,6 +359,7 @@ def main() -> int:
         "resale_candidate_rows": resale_rows,
         "cardtrader_resale": ct_resale_status,
         "route_intelligence": route_intelligence_status,
+        "tcgcsv": tcgcsv_status,
         "cardmarket_live_validation": cardmarket_live_status,
         "market_quality": market_quality_status,
         "model_validation": model_validation_status,
