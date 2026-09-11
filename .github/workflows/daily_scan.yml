@@ -11,7 +11,7 @@ on:
     - cron: '17,47 6,7 * * *'
 
 permissions:
-  contents: read
+  contents: write
 
 # Serialize redundant scheduled attempts. A later attempt waits for the earlier
 # one, then restores the daily marker and skips if a full scan already succeeded.
@@ -118,12 +118,40 @@ jobs:
         if: steps.timecheck.outputs.run == 'true' && env.CARDTRADER_API_TOKEN != ''
         run: python scripts/diagnose_dragonite_trio.py
 
+      - name: Export web dashboard snapshot
+        if: steps.timecheck.outputs.run == 'true'
+        continue-on-error: true
+        run: python scripts/export_dashboard_snapshot.py
+
       - name: Save scanner database state
         if: steps.timecheck.outputs.run == 'true'
         uses: actions/cache/save@v4
         with:
           path: db/pokemon_deal_scanner.sqlite
           key: pokemon-scanner-db-${{ github.run_id }}
+
+      - name: Publish web dashboard snapshot
+        if: steps.timecheck.outputs.run == 'true' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "pokemon-deal-scanner-dashboard"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard/data/dashboard_snapshot.json
+          if git diff --cached --quiet; then
+            echo "Dashboard snapshot unchanged"
+            exit 0
+          fi
+          git commit -m "Update dashboard snapshot ${{ steps.clock.outputs.day }} [skip ci]"
+          git fetch origin main
+          if ! git rebase origin/main; then
+            git rebase --abort || true
+            echo "Dashboard snapshot publish skipped because main advanced incompatibly"
+            exit 1
+          fi
+          git push origin HEAD:main
+          echo "Dashboard snapshot published to main"
 
       - name: Durable weekly/monthly research backup
         if: steps.timecheck.outputs.run == 'true' && env.BACKUP_REPO_TOKEN != '' && (github.event_name == 'workflow_dispatch' || steps.clock.outputs.weekday == '7')
