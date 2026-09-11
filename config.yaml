@@ -1,4 +1,4 @@
-version: "0.8.2"
+version: "0.9"
 timezone: Europe/Dublin
 
 sources:
@@ -14,6 +14,7 @@ paths:
   cardmarket_sourcing_offers: data/reference/cardmarket_sourcing_offers.csv
   ebay_watchlist: data/reference/ebay_watchlist.csv
   ebay_sold_evidence: data/reference/ebay_sold_evidence.csv
+  tcgplayer_market_reference: data/reference/tcgplayer_market_reference.csv
   market_events: data/reference/market_events.csv
   gumtree_watchlist: data/reference/gumtree_watchlist.csv
 
@@ -130,9 +131,6 @@ cardmarket_live:
   game: Pokemon
   language: English
   min_condition: NM
-  # Parse currently prices get_card_listings at 2 credits/call. Three daily checks
-  # consume about 180 credits in a 30-day month, fitting its current 200-credit free
-  # tier with a small buffer. Raise this only when using a paid plan.
   max_candidates_per_run: 3
   watch_priorities:
     - A
@@ -144,6 +142,25 @@ cardmarket_live:
   cheaper_candidate_pct: 10.0
   timeout_seconds: 30
   request_delay_seconds: 12.5
+
+tcgplayer:
+  # TCGplayer is a valuation/liquidity confirmation market only in v0.9.
+  # The normalized reference CSV may be populated manually or by a permitted
+  # external provider. It cannot create a BUY or become an exit route by itself.
+  enabled: true
+  role: valuation_liquidity_confirmation
+  correlated_us_market_weight: 0.75
+
+market_quality:
+  # Financial-market-style gates applied after price-band/lag/live-CM validation.
+  # LQS = liquidity quality, PCS = fair-value confidence, ECS = selected-exit confidence.
+  min_liquidity_score: 65
+  min_price_confidence_score: 75
+  min_exit_confidence_score: 65
+  high_value_from_eur: 50.0
+  high_value_min_liquidity_score: 70
+  high_value_min_price_confidence_score: 80
+  high_value_min_exit_confidence_score: 70
 
 sourcing:
   required_language: en
