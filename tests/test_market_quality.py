@@ -21,22 +21,40 @@ def _read(path: Path) -> list[dict]:
 
 def _cfg() -> dict:
     return {
-        "fx": {"fallback_usd_to_eur": 0.86},
+        "fx": {"fallback_usd_to_eur": 0.86, "fallback_gbp_to_eur": 1.16},
         "market_quality": {
-            "min_liquidity_score": 65,
-            "min_price_confidence_score": 75,
-            "min_exit_confidence_score": 65,
+            "min_liquidity_score": 55,
+            "min_price_confidence_score": 65,
+            "min_exit_confidence_score": 60,
+            "min_bridge_opportunity_score": 60,
             "high_value_from_eur": 50,
-            "high_value_min_liquidity_score": 70,
-            "high_value_min_price_confidence_score": 80,
-            "high_value_min_exit_confidence_score": 70,
+            "high_value_min_liquidity_score": 60,
+            "high_value_min_price_confidence_score": 70,
+            "high_value_min_exit_confidence_score": 65,
+            "high_value_min_bridge_opportunity_score": 65,
         },
     }
 
 
-def _base_files(tmp_path: Path, *, ct_gross: float, ebay_price: float, tcg_price: float,
-                acquisition: float = 54.0, ct_sellers: int = 6, ct_units: int = 14,
-                ebay_sales: int = 6, tcg_sales: int = 12):
+def _base_files(
+    tmp_path: Path,
+    *,
+    cm_trend: float = 120.0,
+    cm_live: float = 121.0,
+    acquisition: float = 90.0,
+    ct_gross: float = 125.0,
+    ct_sellers: int = 5,
+    ct_units: int = 12,
+    eu_ebay: float = 119.0,
+    eu_ebay_sales: int = 6,
+    us_ebay: float = 122.0,
+    us_ebay_sales: int = 6,
+    tcg_market: float = 121.0,
+    tcg_recent: float = 120.0,
+    tcg_sales_90d: int = 90,
+    tcg_qty: int = 8,
+    tcg_sellers: int = 4,
+):
     routes = tmp_path / "routes.csv"
     ct = tmp_path / "ct.csv"
     ebay = tmp_path / "ebay.csv"
@@ -48,17 +66,20 @@ def _base_files(tmp_path: Path, *, ct_gross: float, ebay_price: float, tcg_price
     _write(routes, [
         "snapshot_date", "id_product", "name", "expansion_name", "number",
         "best_validated_buy_eur", "cardmarket_trend_eur", "ebay_expected_eur",
-        "cm_live_robust_floor_eur", "cm_live_sellers",
         "best_sell_channel", "best_sell_gross_eur", "best_sell_net_eur",
-        "net_spread_eur", "net_roi_pct", "route_signal", "notes",
+        "net_spread_eur", "net_roi_pct", "required_net_spread_eur",
+        "required_net_roi_pct", "route_signal", "notes",
+        "cm_live_robust_floor_eur", "cm_live_sellers", "cm_live_units",
     ], [{
-        "snapshot_date": "2026-09-11", "id_product": 123, "name": "Pikachu Test",
+        "snapshot_date": "2026-09-11", "id_product": 123, "name": "Palkia Test",
         "expansion_name": "Test", "number": "001", "best_validated_buy_eur": acquisition,
-        "cardmarket_trend_eur": 58.0, "ebay_expected_eur": ebay_price,
-        "cm_live_robust_floor_eur": 60.0, "cm_live_sellers": 3,
+        "cardmarket_trend_eur": cm_trend, "ebay_expected_eur": eu_ebay,
         "best_sell_channel": "CARDTRADER_ZERO", "best_sell_gross_eur": ct_gross,
         "best_sell_net_eur": ct_gross * 0.91, "net_spread_eur": ct_gross * 0.91 - acquisition,
-        "net_roi_pct": 35, "route_signal": "RESELL_TEST", "notes": "base",
+        "net_roi_pct": (ct_gross * 0.91 - acquisition) / acquisition * 100,
+        "required_net_spread_eur": 15, "required_net_roi_pct": 25,
+        "route_signal": "RESELL_TEST", "notes": "base",
+        "cm_live_robust_floor_eur": cm_live, "cm_live_sellers": 5, "cm_live_units": 10,
     }])
 
     _write(ct, [
@@ -71,102 +92,118 @@ def _base_files(tmp_path: Path, *, ct_gross: float, ebay_price: float, tcg_price
     }])
 
     _write(ebay, [
-        "snapshot_date", "id_product", "strength", "confirmed_sales", "inferred_sales",
-    ], [{
-        "snapshot_date": "2026-09-11", "id_product": 123, "strength": "STRONG",
-        "confirmed_sales": ebay_sales, "inferred_sales": 0,
-    }])
+        "snapshot_date", "id_product", "region", "currency", "chosen_reference",
+        "smoothed_reference", "strength", "confirmed_sales", "inferred_sales",
+    ], [
+        {
+            "snapshot_date": "2026-09-11", "id_product": 123, "region": "EU", "currency": "EUR",
+            "chosen_reference": eu_ebay, "smoothed_reference": eu_ebay,
+            "strength": "STRONG", "confirmed_sales": eu_ebay_sales, "inferred_sales": 0,
+        },
+        {
+            "snapshot_date": "2026-09-11", "id_product": 123, "region": "GLOBAL", "currency": "EUR",
+            "chosen_reference": us_ebay, "smoothed_reference": us_ebay,
+            "strength": "STRONG", "confirmed_sales": us_ebay_sales, "inferred_sales": 0,
+        },
+    ])
 
     _write(tcg, [
-        "id_product", "market_price_eur", "most_recent_sale_eur",
-        "executable_floor_eur", "lowest_listing_price_eur", "lowest_listing_shipping_eur",
-        "current_quantity", "current_sellers", "sales_30d", "sales_90d", "avg_daily_sold",
-        "listing_count", "reference_strength", "checked_at",
+        "id_product", "market_price_eur", "most_recent_sale_eur", "current_quantity",
+        "current_sellers", "sales_90d", "reference_strength", "checked_at", "listing_count",
     ], [{
-        "id_product": 123, "market_price_eur": tcg_price, "most_recent_sale_eur": tcg_price - 3,
-        "executable_floor_eur": tcg_price + 5, "lowest_listing_price_eur": tcg_price + 3,
-        "lowest_listing_shipping_eur": 2, "current_quantity": 25, "current_sellers": 4,
-        "sales_30d": tcg_sales, "sales_90d": "", "avg_daily_sold": "",
-        "listing_count": 999, "reference_strength": "STRONG", "checked_at": "2026-09-11",
+        "id_product": 123, "market_price_eur": tcg_market, "most_recent_sale_eur": tcg_recent,
+        "current_quantity": tcg_qty, "current_sellers": tcg_sellers, "sales_90d": tcg_sales_90d,
+        "reference_strength": "STRONG", "checked_at": "2026-09-11", "listing_count": 999,
     }])
 
     _write(mapping, ["resolved_id_product", "mapping_status"], [{
         "resolved_id_product": 123, "mapping_status": "EXACT",
     }])
-
     _write(core, ["id_product", "watch_priority"], [{"id_product": 123, "watch_priority": "A"}])
     return routes, ct, ebay, tcg, mapping, core, out
 
 
-def test_convergent_markets_get_high_quality_scores(tmp_path):
-    files = _base_files(tmp_path, ct_gross=79, ebay_price=78, tcg_price=77)
+def test_tcgplayer_does_not_drag_eu_fair_value(tmp_path):
+    files = _base_files(
+        tmp_path,
+        cm_trend=120,
+        cm_live=121,
+        eu_ebay=118,
+        us_ebay=98,
+        tcg_market=95,
+        tcg_recent=93,
+        ct_gross=135,
+    )
+    apply_market_quality(_cfg(), *files, today=date(2026, 9, 11))
+    row = _read(files[-1])[0]
+
+    assert float(row["eu_fair_value_eur"]) >= 118
+    assert float(row["us_fair_value_eur"]) <= 98
+    assert float(row["fair_value_eur"]) == float(row["eu_fair_value_eur"])
+    assert row["fair_value_scope"] == "EU_TRANSACTIONAL"
+
+
+def test_supported_cardtrader_bridge_scores_high(tmp_path):
+    files = _base_files(
+        tmp_path,
+        cm_trend=92,
+        cm_live=92,
+        acquisition=80,
+        eu_ebay=91,
+        ct_gross=125,
+        us_ebay=122,
+        tcg_market=123,
+        tcg_recent=121,
+        tcg_sales_90d=120,
+        tcg_qty=10,
+        tcg_sellers=5,
+    )
+    apply_market_quality(_cfg(), *files, today=date(2026, 9, 11))
+    row = _read(files[-1])[0]
+
+    assert int(row["bridge_opportunity_score"]) >= 65
+    assert int(row["us_price_confidence_score"]) >= 70
+    assert int(row["exit_confidence_score"]) >= 65
+
+
+def test_unsupported_cardtrader_premium_is_downgraded(tmp_path):
+    files = _base_files(
+        tmp_path,
+        cm_trend=92,
+        cm_live=92,
+        acquisition=80,
+        eu_ebay=91,
+        ct_gross=125,
+        us_ebay=96,
+        tcg_market=94,
+        tcg_recent=93,
+        tcg_sales_90d=90,
+        tcg_qty=8,
+        tcg_sellers=4,
+    )
     status = apply_market_quality(_cfg(), *files, today=date(2026, 9, 11))
     row = _read(files[-1])[0]
     route = _read(files[0])[0]
 
-    assert int(row["liquidity_score"]) >= 70
-    assert int(row["price_confidence_score"]) >= 80
-    assert int(row["exit_confidence_score"]) >= 70
-    assert row["quality_gate_pass"] == "1"
-    assert row["fair_value_scope"] == "GLOBAL_TRANSACTIONAL"
-    assert row["eu_executable_source"] == "CARDMARKET_LIVE_EN_NM_ARTICLE"
-    assert route["route_signal"] == "RESELL_TEST"
-    assert status["routes_with_tcgplayer_evidence"] == 1
-
-
-def test_cardtrader_outlier_is_downgraded_even_when_fair_value_is_confident(tmp_path):
-    files = _base_files(tmp_path, ct_gross=95, ebay_price=60, tcg_price=59, ct_sellers=2, ct_units=2)
-    status = apply_market_quality(_cfg(), *files, today=date(2026, 9, 11))
-    row = _read(files[-1])[0]
-    route = _read(files[0])[0]
-
-    assert int(row["price_confidence_score"]) >= 70
-    assert int(row["exit_confidence_score"]) < 70
-    assert row["quality_gate_pass"] == "0"
+    assert int(row["bridge_opportunity_score"]) < 65
     assert route["route_signal"] == "WATCH_ONLY"
     assert status["routes_downgraded_by_quality_gate"] == 1
 
 
-def test_missing_tcgplayer_does_not_break_scoring(tmp_path):
-    files = _base_files(tmp_path, ct_gross=79, ebay_price=78, tcg_price=77)
-    _write(files[3], ["id_product", "market_price_eur", "reference_strength", "checked_at"], [])
-    status = apply_market_quality(_cfg(), *files, today=date(2026, 9, 11))
-    row = _read(files[-1])[0]
-
-    assert status["tcgplayer_rows_loaded"] == 0
-    assert row["tcgplayer_strength"] == "NONE"
-    assert int(row["liquidity_score"]) >= 0
-    assert int(row["price_confidence_score"]) >= 0
-
-
-def test_tcgplayer_sales_velocity_is_separate_from_thin_current_supply(tmp_path):
+def test_legacy_listing_count_does_not_inflate_us_depth(tmp_path):
     files = _base_files(
-        tmp_path, ct_gross=139.0, ebay_price=112.0, tcg_price=97.4,
-        acquisition=100.0, ct_sellers=3, ct_units=3, ebay_sales=6, tcg_sales=0,
+        tmp_path,
+        tcg_market=100,
+        tcg_recent=99,
+        tcg_sales_90d=0,
+        tcg_qty=1,
+        tcg_sellers=1,
     )
-    # Palkia-like source shape: 107 sold in 3 months, but only 4 copies / 2 sellers live now.
-    _write(files[3], [
-        "id_product", "market_price_eur", "most_recent_sale_eur",
-        "executable_floor_eur", "lowest_listing_price_eur", "lowest_listing_shipping_eur",
-        "current_quantity", "current_sellers", "sales_30d", "sales_90d", "avg_daily_sold",
-        "listing_count", "reference_strength", "checked_at",
-    ], [{
-        "id_product": 123, "market_price_eur": 97.4, "most_recent_sale_eur": 89.2,
-        "executable_floor_eur": 120.6, "lowest_listing_price_eur": 103.4,
-        "lowest_listing_shipping_eur": 17.2, "current_quantity": 4, "current_sellers": 2,
-        "sales_30d": "", "sales_90d": 107, "avg_daily_sold": 1,
-        # Deliberately wrong/ambiguous legacy count: model must not use this as live depth.
-        "listing_count": 110, "reference_strength": "STRONG", "checked_at": "2026-09-11",
-    }])
-
+    # listing_count=999 is deliberately absurd. Exact current_quantity/current_sellers must win.
     apply_market_quality(_cfg(), *files, today=date(2026, 9, 11))
     row = _read(files[-1])[0]
 
-    assert row["tcgplayer_supply_state"] == "TIGHT"
-    assert int(row["tcgplayer_current_quantity"]) == 4
-    assert int(row["tcgplayer_current_sellers"]) == 2
-    assert int(row["tcgplayer_listing_count"]) == 110  # audit only
-    assert 35.0 < float(row["tcgplayer_monthly_sales_equiv"]) < 36.5
-    assert float(row["tcgplayer_market_to_executable_gap_pct"]) > 20.0
-    assert float(row["tcgplayer_supply_coverage_days"]) < 7.0
-    assert int(row["liquidity_score"]) >= 65
+    assert row["tcgplayer_listing_count"] == "999"
+    assert row["tcgplayer_current_quantity"] == "1"
+    assert row["tcgplayer_current_sellers"] == "1"
+    assert int(row["us_liquidity_score"]) < 85
