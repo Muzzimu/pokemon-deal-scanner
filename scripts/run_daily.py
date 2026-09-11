@@ -40,6 +40,7 @@ from deal_scanner.db import (
 from deal_scanner.maintenance import compact_history
 from deal_scanner.mapping_audit import apply_cardtrader_mapping_guard
 from deal_scanner.market_observatory import generate_resale_candidates, run_ebay_observatory
+from deal_scanner.market_quality import apply_market_quality
 from deal_scanner.reports import generate_reports
 from deal_scanner.route_intelligence import apply_route_intelligence
 from deal_scanner.sourcing import generate_cardmarket_sourcing_report
@@ -83,9 +84,6 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
         max_rows=int(cfg["cardtrader"]["max_candidate_products"]),
     )
 
-    # Validated Cardmarket sourcing products are also CardTrader exit candidates.
-    # Include a bounded set even when they are not cheap/popular enough for the
-    # original CardTrader discovery query.
     resale_limit = int(cfg.get("cardtrader", {}).get("resale_validated_product_limit", 250))
     validated_rows = conn.execute(
         """SELECT id_product FROM cardmarket_en_nm_overrides
@@ -136,6 +134,7 @@ def main() -> int:
     sourcing_csv = resolve_path(cfg, cfg["paths"]["cardmarket_sourcing_offers"])
     ebay_watchlist_csv = resolve_path(cfg, cfg["paths"]["ebay_watchlist"])
     ebay_sold_csv = resolve_path(cfg, cfg["paths"]["ebay_sold_evidence"])
+    tcgplayer_reference_csv = resolve_path(cfg, cfg["paths"]["tcgplayer_market_reference"])
     mapping_override_csv = ROOT / "data" / "reference" / "cardtrader_mapping_overrides.csv"
     conn = connect(db_path)
 
@@ -166,9 +165,6 @@ def main() -> int:
     price_count = insert_price_snapshot(conn, prices, today_s, source_created_at)
     validated_count = load_en_nm_overrides(conn, override_csv)
 
-    # Build the Ireland-eligible Cardmarket sourcing layer before CardTrader sync.
-    # This persists robust EN/NM floors so those exact products are included in the
-    # same run's CardTrader exit-market query.
     sourcing_status = generate_cardmarket_sourcing_report(
         conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
     )
@@ -205,12 +201,6 @@ def main() -> int:
         else:
             cardtrader_status = {"enabled": False, "reason": f"missing {cfg['cardtrader']['token_env']}"}
 
-    # Mapping-confidence guard: CardTrader blueprints can expose more than one
-    # Cardmarket idProduct. Before any route/price reports are generated, reset the
-    # current snapshot to the exact resolved ID and NULL any ambiguous/conflicting
-    # mapping. Ambiguous offers remain stored for diagnostics but cannot create a
-    # false CM->CT arbitrage signal. Human-reviewed resolutions live in the small
-    # cardtrader_mapping_overrides.csv registry.
     ct_date = latest_cardtrader_snapshot_date(conn)
     guard_snapshot = ct_date if ct_date == today_s else None
     mapping_guard_status = apply_cardtrader_mapping_guard(
@@ -260,10 +250,6 @@ def main() -> int:
         output_dir / "core_watch_universe.csv",
     )
 
-    # v0.8.2: only high-priority Core-watch candidates are eligible for an
-    # optional live Cardmarket offer check. The external provider never receives
-    # Cardmarket account credentials/cookies and its article prices cannot create
-    # a BUY without separate Ireland shipping/landed-cost evidence.
     if args.demo:
         cardmarket_live_status = {"enabled": False, "reason": "demo mode", "queried": 0, "rows": 0}
     else:
@@ -278,6 +264,21 @@ def main() -> int:
             api_key=live_api_key,
             today=today,
         )
+
+    # v0.9: financial-market-style quality model. TCGplayer is supporting market
+    # confirmation only; it can raise/lower fair-value confidence and exit confidence
+    # but never creates a BUY or becomes an exit route by itself.
+    market_quality_status = apply_market_quality(
+        cfg,
+        output_dir / "market_routes.csv",
+        output_dir / "cardtrader_resale_candidates.csv",
+        output_dir / "ebay_market_reference.csv",
+        tcgplayer_reference_csv,
+        output_dir / "cardtrader_mapping_audit.csv",
+        output_dir / "core_watch_universe.csv",
+        output_dir / "market_quality.csv",
+        today=today,
+    )
 
     maintenance_status = compact_history(conn, cfg, today=today)
 
@@ -297,6 +298,7 @@ def main() -> int:
         "cardtrader_resale": ct_resale_status,
         "route_intelligence": route_intelligence_status,
         "cardmarket_live_validation": cardmarket_live_status,
+        "market_quality": market_quality_status,
         "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
     })
