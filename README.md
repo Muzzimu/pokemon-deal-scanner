@@ -1,6 +1,21 @@
-# Pokémon Deal Scanner v0.8.1
+# Pokémon Deal Scanner v0.8.2
 
 Python + SQLite scanner for Pokémon TCG sourcing, local deal discovery, resale evidence and small-scale arbitrage, tuned for an Ireland-based buyer.
+
+## What v0.8.2 adds
+
+v0.8.2 adds a **targeted live Cardmarket validation layer** on top of the official daily Cardmarket feed and the v0.8.1 CM/CT route engine.
+
+- `output/core_watch_universe.csv` remains the cheap first-stage filter. Only priority A/B cards with sufficiently high CT-lag scores are eligible for a live lookup.
+- The current optional provider is Parse.bot's Cardmarket `get_card_listings` wrapper, called by exact numeric Cardmarket `idProduct` with English + NM filters.
+- The default cap is 20 cards per daily run. The default delay is 12.5 seconds, conservative enough for Parse's currently advertised free-tier 5 requests/minute rate.
+- `output/cardmarket_live_validation.csv` records the live article floor, robust median of the cheapest sample, seller/unit depth, comparison with the prior validated landed source, and a validation state.
+- A lower live article price becomes `LIVE_CHEAPER_VERIFY_SHIPPING`; it **cannot** create a new BUY because Ireland shipping/landed cost has not been proved.
+- If the live article market has moved materially above the old validated source, the route becomes `REVALIDATE_SOURCE` and a CardTrader `RESELL_TEST` is downgraded to `WATCH_ONLY` until the Cardmarket source is checked again.
+- The scanner never sends Cardmarket account credentials/cookies to the provider and does not implement proxy rotation, browser-fingerprint spoofing, Cloudflare challenge solving or direct Cardmarket anti-bot bypass.
+- The live layer is fail-open for the rest of the scanner: without `PARSE_API_KEY`, the normal daily feed, CardTrader, eBay, Gumtree and route outputs still run.
+
+See [`docs/CARDMARKET_LIVE_DATA_OPTIONS.md`](docs/CARDMARKET_LIVE_DATA_OPTIONS.md) for provider and evidence policy.
 
 ## What v0.8.1 adds
 
@@ -67,7 +82,8 @@ Labels are `ACCELERATING`, `FIRMING`, `PULLBACK`, `COOLING`, `DECLINING`, `DIVER
 5. Confirmed sold evidence outranks inferred quick-sale evidence; active asking prices remain weak context.
 6. Regional markets and currencies remain separate until an explicit FX conversion is performed.
 7. A higher CardTrader active price than Cardmarket does not by itself prove liquidity; v0.8+ requires net economics plus competing-seller depth before a resale test becomes actionable.
-8. Capital at risk matters: v0.8.1 applies stricter absolute-profit gates as acquisition value increases.
+8. Capital at risk matters: v0.8.1+ applies stricter absolute-profit gates as acquisition value increases.
+9. Live third-party Cardmarket article prices are verification evidence, not Ireland-landed acquisition evidence unless shipping is independently known.
 
 This prevents the common false positives the project is designed around: a cheap non-English/low-condition Cardmarket listing being mistaken for an English/NM floor, a visually similar vintage/variant card being priced as the wrong printing, a thin active marketplace ask being mistaken for a realized resale price, or a €70 card being recommended for only a few euro of nominal upside.
 
@@ -106,6 +122,7 @@ The scanner retains the regional/evidence architecture from v0.4-v0.8:
 - inferred quick-sale evidence kept below confirmed sold evidence;
 - active eBay asks never represented as confirmed sales;
 - active CardTrader asks never represented as confirmed sales;
+- third-party live Cardmarket offers never represented as confirmed Ireland-landed buys unless shipping is separately verified;
 - new-product flip guard;
 - bounded Cardmarket/CardTrader/eBay history retention.
 
@@ -130,6 +147,7 @@ DoneDeal remains manual additional Irish sourcing/asking-price context unless a 
 - `output/cardtrader_resale_candidates.csv`
 - `output/market_routes.csv`
 - `output/core_watch_universe.csv`
+- `output/cardmarket_live_validation.csv`
 - `output/market_signals.csv`
 - `output/gumtree_candidates.csv`
 - `output/arbitrage_candidates.csv`
@@ -141,10 +159,10 @@ DoneDeal remains manual additional Irish sourcing/asking-price context unless a 
 
 Business strategy, standing interpretation rules, local Irish benchmark policy, bundle concepts, deal-evaluation conventions and conversation-continuity instructions are preserved in [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md).
 
-Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `docs/SOURCE_ROLE_MATRIX.md`, `docs/ADVERTS_DISCOVERY.md`, `docs/MARKET_EVIDENCE.md`, `docs/EBAY_API_COMPLIANCE.md`, `config.yaml`, relevant `data/reference/` files and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
+Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `docs/SOURCE_ROLE_MATRIX.md`, `docs/CARDMARKET_LIVE_DATA_OPTIONS.md`, `docs/ADVERTS_DISCOVERY.md`, `docs/MARKET_EVIDENCE.md`, `docs/EBAY_API_COMPLIANCE.md`, `config.yaml`, relevant `data/reference/` files and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
 
 ## Workflow scheduling
 
 The production GitHub Actions workflow targets one full scan per Dublin calendar day once local time has reached **07:00**. Redundant UTC attempts cover Irish DST and GitHub scheduling delays; concurrency plus a daily-success marker prevent duplicate full scans. Manual workflow dispatch remains supported.
 
-The workflow runs tests first, then the normal scanner, market-trend signals, Gumtree discovery/arbitrage, and diagnostic checks. `output/*.csv` and `output/*.json` are uploaded as the daily artifact, so the CardTrader resale, market-route and Core watch reports are included automatically.
+The workflow runs tests first, then the normal scanner, market-trend signals, Gumtree discovery/arbitrage, and diagnostic checks. `output/*.csv` and `output/*.json` are uploaded as the daily artifact, so the CardTrader resale, market-route, Core watch and optional live Cardmarket validation reports are included automatically.
