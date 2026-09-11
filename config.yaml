@@ -1,4 +1,4 @@
-version: "0.9.1"
+version: "0.10"
 timezone: Europe/Dublin
 
 sources:
@@ -144,25 +144,26 @@ cardmarket_live:
   request_delay_seconds: 12.5
 
 tcgplayer:
-  # v0.9.1 separates transaction evidence from the live order book.
-  # Market Price / recent sales inform GLOBAL transactional fair value and velocity.
-  # Current sellers/quantity and the item+shipping floor describe live US supply only.
-  # Legacy listing_count is audit-only because provider/search counts may not equal the
-  # exact product's current quantity. No TCGplayer field can create an Ireland BUY.
+  # v0.10 treats TCGplayer as a US-market reference, not a component of EU fair value.
+  # Market Price/recent sales plus US/global eBay build the US reference used mainly
+  # to test whether a CardTrader premium is credible for cross-border resale.
+  # Current sellers/quantity and item+shipping floor describe live US supply only.
+  # Legacy listing_count is audit-only. No TCGplayer field can create an Ireland BUY.
   enabled: true
-  role: valuation_liquidity_confirmation
-  correlated_us_market_weight: 0.75
+  role: us_market_confirmation_for_cardtrader_bridge
 
 market_quality:
-  # Financial-market-style gates applied after price-band/lag/live-CM validation.
-  # LQS = liquidity quality, PCS = fair-value confidence, ECS = selected-exit confidence.
+  # For an Ireland buyer, legacy LQS/PCS aliases now mean EU liquidity / EU price confidence.
+  # CardTrader exits must additionally pass BOS = Bridge Opportunity Score.
   min_liquidity_score: 65
   min_price_confidence_score: 75
   min_exit_confidence_score: 65
+  min_bridge_opportunity_score: 65
   high_value_from_eur: 50.0
   high_value_min_liquidity_score: 70
   high_value_min_price_confidence_score: 80
   high_value_min_exit_confidence_score: 70
+  high_value_min_bridge_opportunity_score: 70
 
 sourcing:
   required_language: en
@@ -307,7 +308,7 @@ gumtree:
       url: https://www.gumtree.com/for-sale/uk/northern-ireland/srpsearch+pokemon-cards
     - region: GREAT_BRITAIN
       query: pokemon cards
-      url: https://www.gumtree.com/for-sale/uk/srpsearch+pokemon+cards
+      url: https://www.gumtree.com/for-sale/uk/srpsearch+pokemon-cards
   exact_search_locations:
     NORTHERN_IRELAND: northern-ireland
     GREAT_BRITAIN: uk
