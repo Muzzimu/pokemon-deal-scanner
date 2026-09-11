@@ -22,11 +22,20 @@ PREDICTION_FIELDS = [
 
 ROUTE_FIELDS = [
     "snapshot_date", "id_product", "name", "expansion_name", "number", "route_signal",
-    "best_validated_buy_eur", "eu_fair_value_eur", "us_fair_value_eur",
-    "best_sell_channel", "best_sell_net_eur", "net_spread_eur", "net_roi_pct",
-    "deal_score", "eu_price_confidence_score", "liquidity_score", "eu_liquidity_score",
-    "exit_confidence_score", "bridge_opportunity_score", "ct_lag_label",
+    "best_validated_buy_source", "best_validated_buy_eur", "eu_fair_value_eur",
+    "us_fair_value_eur", "best_sell_channel", "best_sell_net_eur", "net_spread_eur",
+    "net_roi_pct", "deal_score", "eu_price_confidence_score", "eu_price_confidence_label",
+    "liquidity_score", "liquidity_label", "eu_liquidity_score",
+    "exit_confidence_score", "exit_confidence_label", "bridge_opportunity_score",
+    "bridge_opportunity_label", "quality_gate_reason", "confidence", "ct_lag_label",
     "manual_verification_required", "price_band",
+]
+
+DISCOVERY_FIELDS = [
+    "snapshot_date", "id_product", "name", "expansion_name", "number", "rarity",
+    "best_validated_sourcing_price", "deal_score", "status", "trend", "avg30",
+    "cm_en_nm_floor", "ct_en_nm_floor", "ct_visible_sellers", "ct_visible_units",
+    "gap_pct", "popularity_score",
 ]
 
 OUTCOME_FIELDS = [
@@ -62,6 +71,48 @@ def read_csv(path: Path) -> list[dict]:
 
 def select_fields(row: dict, fields: list[str]) -> dict:
     return {field: row.get(field) for field in fields if field in row}
+
+
+def blank(value) -> bool:
+    return value is None or str(value).strip().lower() in {"", "none", "nan", "null"}
+
+
+def enrich_identity(conn: sqlite3.Connection, rows: list[dict]) -> list[dict]:
+    """Fill display identity fields from products without changing market/scoring fields."""
+    ids = sorted(
+        {
+            int(row["id_product"])
+            for row in rows
+            if row.get("id_product") not in (None, "")
+        }
+    )
+    if not ids or not table_exists(conn, "products"):
+        return rows
+
+    placeholders = ",".join("?" for _ in ids)
+    products = conn.execute(
+        f"""
+        SELECT id_product, name, expansion_name, number
+        FROM products
+        WHERE id_product IN ({placeholders})
+        """,
+        tuple(ids),
+    ).fetchall()
+    by_id = {int(row["id_product"]): dict(row) for row in products}
+
+    out = []
+    for source in rows:
+        row = dict(source)
+        try:
+            product = by_id.get(int(row.get("id_product")))
+        except (TypeError, ValueError):
+            product = None
+        if product:
+            for field in ("name", "expansion_name", "number"):
+                if blank(row.get(field)) and not blank(product.get(field)):
+                    row[field] = product[field]
+        out.append(row)
+    return out
 
 
 def latest_predictions(conn: sqlite3.Connection) -> list[dict]:
@@ -152,18 +203,33 @@ def build_snapshot() -> dict:
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+
     predictions = latest_predictions(conn)
     product_ids = [int(row["id_product"]) for row in predictions if row.get("id_product") is not None]
-    routes = [select_fields(row, ROUTE_FIELDS) for row in read_csv(output_dir / "market_routes.csv")]
+
+    raw_routes = read_csv(output_dir / "market_routes.csv")
+    routes = [
+        select_fields(row, ROUTE_FIELDS)
+        for row in enrich_identity(conn, raw_routes)
+    ]
+
+    # top_flips is a discovery/ranking surface, not a final route recommendation.
+    # Only safe market fields are published and the hosted payload is capped.
+    raw_discovery = read_csv(output_dir / "top_flips.csv")[:75]
+    discovery = [
+        select_fields(row, DISCOVERY_FIELDS)
+        for row in enrich_identity(conn, raw_discovery)
+    ]
 
     snapshot = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "scanner_version": str(cfg.get("version") or "unknown"),
         "public_snapshot": True,
         "privacy_note": "Market/model fields only; no secrets, personal inventory, or seller-level data.",
         "latest_predictions": predictions,
         "market_routes": routes,
+        "discovery_candidates": discovery,
         "maturity": maturity(conn),
         "source_sync_state": sync_state(conn),
         "latest_outcomes_by_card": latest_outcomes_by_card(conn, product_ids),
@@ -181,7 +247,9 @@ def main() -> int:
     )
     print(
         f"Dashboard snapshot written to {DEFAULT_OUTPUT.relative_to(ROOT)} "
-        f"({len(snapshot['latest_predictions'])} predictions, {len(snapshot['market_routes'])} routes)"
+        f"({len(snapshot['latest_predictions'])} predictions, "
+        f"{len(snapshot['market_routes'])} routes, "
+        f"{len(snapshot['discovery_candidates'])} discovery candidates)"
     )
     return 0
 
