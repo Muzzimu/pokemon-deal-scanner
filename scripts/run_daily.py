@@ -20,6 +20,7 @@ from deal_scanner.cardmarket import (
     read_price_guide,
 )
 from deal_scanner.cardtrader import CardTraderClient, blueprint_rows, expansion_id, expansion_name, normalize_marketplace, pokemon_expansions
+from deal_scanner.cardtrader_resale import generate_cardtrader_resale_reports
 from deal_scanner.config import load_config, resolve_path
 from deal_scanner.db import (
     blueprint_product_map_for_expansion,
@@ -72,12 +73,25 @@ def bootstrap_cardtrader(conn, client: CardTraderClient) -> dict:
 def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str) -> dict:
     names = list(cfg["bundles"]["characters"])
     names.append(cfg["watchlists"]["dragonite"]["query"])
-    candidate_ids = product_ids_for_candidate_query(
+    discovery_ids = product_ids_for_candidate_query(
         conn,
         max_generic_low=float(cfg["cardtrader"]["candidate_generic_low_max_eur"]),
         names=sorted(set(names)),
         max_rows=int(cfg["cardtrader"]["max_candidate_products"]),
     )
+
+    # v0.8: validated Cardmarket sourcing products are also CardTrader exit
+    # candidates. Include a bounded set even when they are not cheap/popular enough
+    # for the original CardTrader discovery query.
+    resale_limit = int(cfg.get("cardtrader", {}).get("resale_validated_product_limit", 250))
+    validated_rows = conn.execute(
+        """SELECT id_product FROM cardmarket_en_nm_overrides
+           ORDER BY checked_at DESC, id_product ASC LIMIT ?""",
+        (resale_limit,),
+    ).fetchall()
+    validated_ids = [int(r["id_product"]) for r in validated_rows]
+    candidate_ids = sorted(set(discovery_ids) | set(validated_ids))
+
     expansion_ids = expansion_ids_for_products(conn, candidate_ids)
     inserted = 0
     queried = 0
@@ -91,6 +105,9 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
         queried += 1
     return {
         "candidate_products": len(candidate_ids),
+        "discovery_candidate_products": len(discovery_ids),
+        "validated_resale_products": len(validated_ids),
+        "validated_resale_products_added": len(set(validated_ids) - set(discovery_ids)),
         "expansions_queried": queried,
         "offer_rows_inserted": inserted,
     }
@@ -145,6 +162,13 @@ def main() -> int:
     price_count = insert_price_snapshot(conn, prices, today_s, source_created_at)
     validated_count = load_en_nm_overrides(conn, override_csv)
 
+    # Build the Ireland-eligible Cardmarket sourcing layer before CardTrader sync.
+    # This persists robust EN/NM floors so those exact products are included in the
+    # same run's CardTrader exit-market query.
+    sourcing_status = generate_cardmarket_sourcing_report(
+        conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
+    )
+
     cardtrader_status: dict = {"enabled": False, "reason": "not configured"}
     if args.demo and not args.skip_cardtrader:
         fixtures = ROOT / "tests" / "fixtures"
@@ -177,11 +201,6 @@ def main() -> int:
         else:
             cardtrader_status = {"enabled": False, "reason": f"missing {cfg['cardtrader']['token_env']}"}
 
-    # Build the Ireland-eligible Cardmarket sourcing layer before scoring so the
-    # robust EN/NM median floor is available in this same run, not one day later.
-    sourcing_status = generate_cardmarket_sourcing_report(
-        conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
-    )
     generate_reports(conn, cfg, output_dir)
 
     ct_date = latest_cardtrader_snapshot_date(conn)
@@ -204,6 +223,16 @@ def main() -> int:
         output_dir / "resale_candidates.csv",
         cfg,
     )
+
+    ct_resale_status = generate_cardtrader_resale_reports(
+        conn,
+        cfg,
+        output_dir / "cardmarket_sourcing.csv",
+        output_dir / "resale_candidates.csv",
+        output_dir / "cardtrader_resale_candidates.csv",
+        output_dir / "market_routes.csv",
+    )
+
     maintenance_status = compact_history(conn, cfg, today=today)
 
     status_path = output_dir / "scanner_status.json"
@@ -218,6 +247,7 @@ def main() -> int:
         "cardmarket_sourcing": sourcing_status,
         "ebay_market_observatory": ebay_status,
         "resale_candidate_rows": resale_rows,
+        "cardtrader_resale": ct_resale_status,
         "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
     })
