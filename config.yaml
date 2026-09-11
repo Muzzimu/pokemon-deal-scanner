@@ -103,6 +103,17 @@ local_cherry_pick:
   default_postage_eur: 2.00
   default_postage_up_to_cards: 10
   require_verified_en_nm_reference: true
+  # Dense binder/photo listings are prone to look-alike printings. Never issue a
+  # BUY/deal signal from visual resemblance alone: verify the exact printing first.
+  # At minimum confirm set + collector number and any value-changing variant such
+  # as holo/non-holo, reverse, stamp/promo, language or edition. If the photo is too
+  # unclear, label the identification uncertain and ask for a close-up/card number.
+  require_exact_printing_before_price_signal: true
+  uncertain_identification_action: watch_only
+  identification_required_fields:
+    - set
+    - collector_number
+    - value_changing_variant
   preferred_traits:
     - stamped
     - promo
