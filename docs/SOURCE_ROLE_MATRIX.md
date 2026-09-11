@@ -17,7 +17,7 @@ The purpose is to keep three questions separate for every card the scanner can e
 | Cardmarket | Primary | Primary | Secondary | — | Official catalogue + price-guide downloads; manually/externally validated EN/NM Ireland-eligible landed offers |
 | Cardmarket live validator | Verification only | Supporting context | — | — | Low-volume exact-product third-party REST lookup; article price is never treated as Ireland-landed cost without shipping evidence |
 | CardTrader | Secondary | Secondary | **Primary test from v0.8** | — | Official CardTrader API v2 marketplace offers, mapped to Cardmarket product IDs |
-| **TCGplayer** | — | **Valuation/liquidity confirmation** | — in v0.9 | — | Normalized exact-product reference CSV containing market/low price, listing depth and sales velocity when available |
+| **TCGplayer** | — | **Valuation/liquidity confirmation** | — | — | Exact-product reference: transaction Market Price / recent sales / velocity plus separate current sellers/quantity/item+shipping live-supply fields |
 | eBay Browse API | — | Secondary | Primary | — | Official active-listing API with item-location checks and regional separation |
 | eBay Product Research | — | Primary sold evidence | Primary sold evidence | — | Manual Seller Hub research, normalized into reference CSVs |
 | Adverts.ie | Primary local | Local context | Secondary local | Primary | User-supplied pages/screenshots + public-index discovery; no direct automated scraper |
@@ -66,17 +66,27 @@ The Core watch universe is also the budget/rate-limit gate for optional live Car
 
 Only high-priority exact Cardmarket product IDs are queried. English/NM article prices can confirm that the previous sourcing evidence is still plausible or show that it needs revalidation. They cannot establish a new Ireland-landed BUY by themselves because shipping is not part of the current live-provider evidence.
 
-## v0.9 TCGplayer and market-quality model
+## v0.9 / v0.9.1 TCGplayer and market-quality model
 
-TCGplayer is intentionally added as a **fourth valuation/liquidity leg**, not as another automatic sourcing or exit market. The canonical join remains Cardmarket `id_product`; collector number and card name are supporting validation, not the primary key.
+TCGplayer is intentionally a **fourth valuation/liquidity leg**, not another automatic sourcing or exit market. The canonical join remains Cardmarket `id_product`; collector number and card name are supporting validation, not the primary key.
+
+v0.9.1 adds a strict semantic split inside TCGplayer evidence:
+
+- **Transaction layer:** Market Price, most recent sale and realized sales velocity. These inform global fair value, PCS and LQS velocity.
+- **Live-supply layer:** exact current seller count, exact current quantity, lowest item price, shipping and executable item+shipping floor. These describe current order-book conditions only.
+- Provider/search `listing_count` is retained for audit but receives **zero** exact-depth credit unless its semantic is independently proven.
+
+This allows the scanner to represent a card as **highly liquid but temporarily supply-constrained**. For example, 107 sales in three months with 4 live copies from 2 sellers produces strong velocity but thin current depth.
 
 The scanner computes three 0–100 quality scores:
 
-- **LQS — Liquidity Quality Score:** velocity, visible depth, cross-market spread/convergence, market breadth and immediacy.
+- **LQS — Liquidity Quality Score:** velocity, exact visible depth, cross-market spread/convergence, market breadth and immediacy.
 - **PCS — Price Confidence Score:** cross-market convergence, transaction evidence, freshness, liquidity and mapping/identity quality.
 - **ECS — Exit Confidence Score:** confidence that the selected sell channel can actually achieve its modeled gross exit price.
 
-TCGplayer is correlation-discounted against US eBay so the two are not counted as fully independent markets. A high CT price that disagrees with Cardmarket/eBay/TCGplayer may therefore leave PCS high around the lower fair value while driving CT exit confidence sharply lower.
+TCGplayer is correlation-discounted against US eBay so the two are not counted as fully independent markets. A high CT price that disagrees with Cardmarket/eBay/TCGplayer transactions may therefore leave PCS high around the lower fair value while driving CT exit confidence sharply lower.
+
+`fair_value_eur` is explicitly **GLOBAL_TRANSACTIONAL**. Current executable asks are not mixed into it. When live Cardmarket validation has at least two English/NM sellers, `eu_executable_value_eur` separately exposes current European article-price replacement context; it is still not an Ireland-landed BUY until shipping is known.
 
 The standard quality gate is LQS ≥65 / PCS ≥75 / ECS ≥65. For acquisition cost ≥€50 it becomes LQS ≥70 / PCS ≥80 / ECS ≥70. A failing gate can downgrade `RESELL_TEST` to `WATCH_ONLY`; this layer never upgrades a weak route.
 
@@ -90,8 +100,9 @@ See `docs/MARKET_QUALITY_MODEL.md` for the scoring detail.
 - CardTrader observed English/NM article floor;
 - Cardmarket trend value;
 - eBay expected resale reference when available;
-- TCGplayer supporting reference when available;
-- robust weighted-median fair value and cross-market dispersion;
+- TCGplayer transactional reference and current live-supply fields when available;
+- global transactional weighted-median fair value and cross-market dispersion;
+- current European EN/NM executable article context when live Cardmarket depth exists;
 - CardTrader Direct and Zero gross/net exit estimates;
 - eBay gross/net exit estimate when available;
 - the best modeled sell channel after fees/reserves;
@@ -101,7 +112,7 @@ See `docs/MARKET_QUALITY_MODEL.md` for the scoring detail.
 - LQS/PCS/ECS market-quality scores and quality-gate result;
 - net spread, ROI, route signal and confidence.
 
-The route file deliberately distinguishes **validated landed cost** from **observed marketplace article price**. CardTrader, TCGplayer or a third-party Cardmarket live feed can therefore be visibly cheaper/more expensive without automatically becoming an acquisition route.
+The route file deliberately distinguishes **validated landed cost**, **global transactional fair value**, and **current observed executable article prices**. CardTrader, TCGplayer or a third-party Cardmarket live feed can therefore be visibly cheaper/more expensive without automatically becoming an acquisition route.
 
 ## Evidence discipline
 
@@ -110,7 +121,8 @@ The route file deliberately distinguishes **validated landed cost** from **obser
 - Third-party Cardmarket live article prices are verification evidence, not Ireland-landed acquisition evidence.
 - CardTrader and eBay active asks are not sold evidence.
 - eBay Product Research / confirmed sold evidence outranks active-market asks for valuation.
-- TCGplayer is confirmation evidence only in v0.9 and is correlation-discounted against eBay.
+- TCGplayer Market Price / recent sales are transaction evidence; current sellers/quantity/item+shipping are separate live-supply evidence.
+- TCGplayer provider/search `listing_count` is audit-only and cannot substitute for exact current quantity.
 - Local-platform accepted offers and sold markers retain their existing evidence hierarchy.
 - A high CardTrader price relative to Cardmarket is a **cross-market resale hypothesis**, not proof that the card will sell quickly.
 - Higher capital at risk requires larger absolute expected profit; percentage ROI alone is insufficient.
