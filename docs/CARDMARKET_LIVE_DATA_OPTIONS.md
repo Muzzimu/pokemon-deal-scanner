@@ -21,9 +21,9 @@ Cardmarket still documents API v2, but its help page currently says it is **not 
 There are two materially different kinds of Cardmarket actors on Apify:
 
 1. **Daily market-price actors** that mainly package Cardmarket's published catalogue/price-guide data. These add little value because the scanner already downloads the same official source directly for free.
-2. **Browser/residential-proxy actors** that load Cardmarket product pages and extract live offers. These can technically expose useful offer data, but they are a more fragile and higher-risk dependency because they operate against a site that actively deploys anti-automation controls.
+2. **Browser/residential-proxy actors** that load Cardmarket product pages and extract live offers. These can technically expose useful live offer data, but they are a more fragile and higher-risk dependency because they operate against a site that actively deploys anti-automation controls.
 
-The project does not implement Cloudflare bypass, fingerprint spoofing, challenge solving, residential-proxy rotation or logged-in session harvesting. If an external provider exposes permitted public-data access behind a normal REST contract, the scanner may consume that provider without inheriting its internal scraping implementation.
+The project does not implement Cloudflare bypass, fingerprint spoofing, challenge solving, residential-proxy rotation or logged-in session harvesting. If an external provider exposes public-data access behind a normal REST contract, the scanner can consume that provider without coupling our code to its internal scraping implementation.
 
 ## Parse.bot Cardmarket wrapper
 
@@ -31,7 +31,7 @@ Parse.bot currently advertises an unofficial Cardmarket wrapper with `get_card_l
 
 ### v0.8.2 implementation
 
-The repository now contains `src/deal_scanner/cardmarket_live.py`, a **feature-flagged, low-volume validation layer**. The current provider implementation calls Parse.bot's public REST wrapper when `PARSE_API_KEY` is present.
+The repository contains `src/deal_scanner/cardmarket_live.py`, a **feature-flagged, low-volume validation layer**. The current provider implementation calls Parse.bot's public REST wrapper when `PARSE_API_KEY` is present.
 
 The validator deliberately does not:
 
@@ -41,7 +41,7 @@ The validator deliberately does not:
 - interpret a live article price as Ireland-landed cost;
 - create a new automatic BUY signal from a cheaper live article alone.
 
-It only checks high-priority rows already present in `output/core_watch_universe.csv`, currently priorities A/B with a minimum CT-lag score. The default cap is 20 cards per daily run and the request delay is conservative enough for Parse's currently advertised free-tier 5 requests/minute limit.
+It only checks high-priority rows already present in `output/core_watch_universe.csv`, currently priorities A/B with a minimum CT-lag score. The default cap is **3 cards per daily run**. Parse currently prices `get_card_listings` at 2 credits per successful call, so three daily calls use about 180 credits in a 30-day month and fit the current 200-credit free tier with a small buffer. The 12.5-second request delay is also below the current free-tier 5-requests/minute rate limit. Raise the cap only when using a paid plan.
 
 Output: `output/cardmarket_live_validation.csv`.
 
@@ -56,7 +56,7 @@ When the live evidence indicates a stale acquisition source, `market_routes.csv`
 
 ## Provider-neutral policy
 
-The validation logic is deliberately separate from the provider client. A different permitted live-offer service can replace Parse later while preserving the normalized output and guardrails. Minimum useful fields remain:
+The validation logic is deliberately separate from the provider client. A different live-offer service can replace Parse later while preserving the normalized output and guardrails. Minimum useful fields remain:
 
 - Cardmarket `id_product` / exact product identity;
 - language and condition;
