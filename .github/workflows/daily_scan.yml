@@ -94,6 +94,10 @@ jobs:
         if: steps.timecheck.outputs.run == 'true'
         run: python scripts/run_daily.py --no-archive
 
+      - name: Build monthly model validation report
+        if: steps.timecheck.outputs.run == 'true'
+        run: python scripts/generate_model_monthly_report.py
+
       - name: Build market trend signals
         if: steps.timecheck.outputs.run == 'true'
         run: python scripts/generate_market_signals.py
