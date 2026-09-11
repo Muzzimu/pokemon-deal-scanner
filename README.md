@@ -1,6 +1,18 @@
-# Pokémon Deal Scanner v0.8
+# Pokémon Deal Scanner v0.8.1
 
 Python + SQLite scanner for Pokémon TCG sourcing, local deal discovery, resale evidence and small-scale arbitrage, tuned for an Ireland-based buyer.
+
+## What v0.8.1 adds
+
+v0.8.1 makes the Cardmarket -> CardTrader route engine more risk-aware instead of using one universal profit threshold.
+
+- **Dynamic price-band gates:** higher-capital cards require larger absolute profit before they can become a `RESELL_TEST`. The default bands are €0–10 (≥€2.50 / 35% ROI), €10–30 (≥€5 / 30%), €30–50 (≥€8 / 25%), €50–100 (≥€15 / 25%), and €100+ (≥€25 / 20%).
+- **€100+ manual-verification gate:** even when the numbers pass, high-value raw cards stay `WATCH_ONLY` until exact printing, photos/condition and the intended exit route are checked manually.
+- **CardTrader / Cardmarket lag score:** routes receive a 0–100 score combining net CM->CT gap, CT seller depth, CT unit depth and eBay confirmation. A large CT ask from one isolated seller therefore cannot rank like a broad cross-market gap.
+- **Dynamic Core watch universe:** `output/core_watch_universe.csv` contains covered cards in the configured €15–€120 value range that have enough CT depth plus either stronger eBay evidence or at least three CT sellers. It is evidence-driven rather than a hard-coded list of famous Pokémon.
+- `output/cardtrader_resale_candidates.csv` and `output/market_routes.csv` now include the price band, required profit/ROI, manual-verification flag, CM->CT gap percentages and lag score/label.
+
+The Core watch universe is intentionally built only from cards for which the scanner already has sufficiently strong mapped/validated evidence. It is not a claim to represent the 100 most liquid Pokémon cards on the whole market.
 
 ## What v0.8 adds
 
@@ -54,9 +66,10 @@ Labels are `ACCELERATING`, `FIRMING`, `PULLBACK`, `COOLING`, `DECLINING`, `DIVER
 4. If the exact printing cannot be verified, use `VERIFY_VARIANT` / watch-only and request a close-up or collector number.
 5. Confirmed sold evidence outranks inferred quick-sale evidence; active asking prices remain weak context.
 6. Regional markets and currencies remain separate until an explicit FX conversion is performed.
-7. A higher CardTrader active price than Cardmarket does not by itself prove liquidity; v0.8 requires net economics plus competing-seller depth before a resale test becomes actionable.
+7. A higher CardTrader active price than Cardmarket does not by itself prove liquidity; v0.8+ requires net economics plus competing-seller depth before a resale test becomes actionable.
+8. Capital at risk matters: v0.8.1 applies stricter absolute-profit gates as acquisition value increases.
 
-This prevents the common false positives the project is designed around: a cheap non-English/low-condition Cardmarket listing being mistaken for an English/NM floor, a visually similar vintage/variant card being priced as the wrong printing, or a thin active marketplace ask being mistaken for a realized resale price.
+This prevents the common false positives the project is designed around: a cheap non-English/low-condition Cardmarket listing being mistaken for an English/NM floor, a visually similar vintage/variant card being priced as the wrong printing, a thin active marketplace ask being mistaken for a realized resale price, or a €70 card being recommended for only a few euro of nominal upside.
 
 ## Source roles
 
@@ -84,7 +97,7 @@ Everything else is downgraded to verification, possible-arbitrage or no-edge sta
 
 ## Existing market evidence architecture
 
-The scanner retains the regional/evidence architecture from v0.4-v0.7:
+The scanner retains the regional/evidence architecture from v0.4-v0.8:
 
 - eBay Ireland, continental EU, UK and Global evidence kept separate;
 - physical item location required for regional eBay evidence;
@@ -116,6 +129,7 @@ DoneDeal remains manual additional Irish sourcing/asking-price context unless a 
 - `output/resale_candidates.csv`
 - `output/cardtrader_resale_candidates.csv`
 - `output/market_routes.csv`
+- `output/core_watch_universe.csv`
 - `output/market_signals.csv`
 - `output/gumtree_candidates.csv`
 - `output/arbitrage_candidates.csv`
@@ -133,4 +147,4 @@ Before changing scanner behavior or interpreting a run in a new chat/session, re
 
 The production GitHub Actions workflow targets one full scan per Dublin calendar day once local time has reached **07:00**. Redundant UTC attempts cover Irish DST and GitHub scheduling delays; concurrency plus a daily-success marker prevent duplicate full scans. Manual workflow dispatch remains supported.
 
-The workflow runs tests first, then the normal scanner, market-trend signals, Gumtree discovery/arbitrage, and diagnostic checks. `output/*.csv` and `output/*.json` are uploaded as the daily artifact, so the new CardTrader resale and market-route reports are included automatically.
+The workflow runs tests first, then the normal scanner, market-trend signals, Gumtree discovery/arbitrage, and diagnostic checks. `output/*.csv` and `output/*.json` are uploaded as the daily artifact, so the CardTrader resale, market-route and Core watch reports are included automatically.
