@@ -42,9 +42,25 @@ Current default EU seller-fee assumptions are intentionally conservative for a n
 
 These values are planning assumptions and are configurable in `config.yaml`. Official fee source: `https://static.cardtrader.com/it/pages/payments-fees-and-refunds`.
 
+## v0.8.1 risk and lag intelligence
+
+v0.8.1 adds two controls on top of the base CardTrader exit model.
+
+First, the scanner uses **price-band profit gates** rather than one universal hurdle. The configured defaults are:
+
+- €0–10 acquisition: at least €2.50 net spread and 35% ROI;
+- €10–30: at least €5 and 30%;
+- €30–50: at least €8 and 25%;
+- €50–100: at least €15 and 25%;
+- €100+: at least €25 and 20%, plus mandatory human verification before action.
+
+Second, Cardmarket -> CardTrader gaps receive a **0–100 CT lag score**. The score combines the net price gap, number of competing CT sellers, visible CT units and eBay confirmation. This is intentionally designed to distinguish a broad price dislocation from one isolated optimistic CardTrader seller.
+
+The scanner also writes `output/core_watch_universe.csv`: an evidence-driven watch universe for covered cards in the configured value range with sufficient CT depth and cross-market confirmation. It is not a fixed list of famous Pokémon and it is not claimed to be a complete market-liquidity ranking.
+
 ## Market-route output
 
-v0.8 writes `output/market_routes.csv`. Each row represents a card for which the project has validated Cardmarket landed sourcing evidence and then shows:
+`output/market_routes.csv` represents cards for which the project has validated Cardmarket landed sourcing evidence and then shows:
 
 - validated buy source and landed/risk-adjusted cost;
 - CardTrader observed English/NM article floor (not landed acquisition cost);
@@ -53,6 +69,8 @@ v0.8 writes `output/market_routes.csv`. Each row represents a card for which the
 - CardTrader Direct and Zero gross/net exit estimates;
 - eBay gross/net exit estimate when available;
 - the best modeled sell channel after fees/reserves;
+- price-band requirements and manual-verification flag;
+- CT/CM lag metrics;
 - net spread, ROI, route signal and confidence.
 
 The route file deliberately distinguishes **validated landed cost** from **observed marketplace article price**. CardTrader can therefore be visibly cheaper than Cardmarket without automatically becoming the chosen acquisition route until its buyer-side landed cost is known.
@@ -65,3 +83,4 @@ The route file deliberately distinguishes **validated landed cost** from **obser
 - eBay Product Research / confirmed sold evidence outranks active-market asks for valuation.
 - Local-platform accepted offers and sold markers retain their existing evidence hierarchy.
 - A high CardTrader price relative to Cardmarket is a **cross-market resale hypothesis**, not proof that the card will sell quickly.
+- Higher capital at risk requires larger absolute expected profit; percentage ROI alone is insufficient.
