@@ -1,157 +1,179 @@
-# Market quality model (v0.9.1)
+# Market quality model (v0.10)
 
 Last updated: 2026-09-11
 
-v0.9.1 treats Pokémon singles as a fragmented, relatively illiquid financial market rather than assuming that a quoted price is executable. Every covered route can receive three separate 0–100 scores:
+v0.10 treats Pokémon singles as a **segmented international market**, not one frictionless global exchange. For an Ireland-based buyer, Cardmarket is the main European price-discovery venue, TCGplayer is primarily a US-market reference, and CardTrader can act as a bridge between those markets.
 
-- **LQS — Liquidity Quality Score:** how easily the exact printing can realistically trade near fair value.
-- **PCS — Price Confidence Score:** how confident the scanner is in the estimated fair market value.
-- **ECS — Exit Confidence Score:** how confident the scanner is that the currently selected sell venue can achieve its modeled exit price.
+## Core market structure
 
-These scores are additional gates. They do not replace exact-printing, English/NM, landed-cost, fee, seller-depth or profit/ROI requirements.
+The scanner now maintains three separate concepts:
 
-## TCGplayer role and v0.9.1 source semantics
+1. **EU Fair Value (EFV)** — what the exact printing is worth in the European/Ireland-facing market.
+2. **US Fair Value (UFV)** — what the exact printing is worth in the US/global reference market.
+3. **Bridge Opportunity Score (BOS)** — whether buying from the EU side and selling through CardTrader is supported by real US/global demand rather than a thin CardTrader ask.
 
-TCGplayer is a **valuation and liquidity confirmation market only**. It is deliberately not used as an automatic Ireland acquisition source and is not selected as an exit venue.
+TCGplayer no longer moves EU fair value directly.
 
-v0.9.1 explicitly separates **transaction evidence** from the **current live order book**:
+## EU Fair Value
 
-### Transaction / velocity fields
+EU Fair Value is built only from European evidence:
 
-- `market_price_*` — transaction-derived market reference; can enter global fair value / PCS.
-- `most_recent_sale_*` — latest observed realized transaction; freshness/context only, not a second independent fair-value vote.
-- `sales_30d`, `sales_90d`, `avg_daily_sold` — realized velocity inputs. The scanner normalizes these to a monthly-equivalent rate.
+- Cardmarket trend/history;
+- live English/NM Cardmarket article pricing when enough seller depth is available;
+- eBay Ireland / continental-EU evidence, with confirmed sold evidence weighted above active asks.
 
-### Current live supply fields
+`fair_value_eur` remains in output for backward compatibility, but from v0.10 it means **EU Fair Value** and `fair_value_scope` is `EU_TRANSACTIONAL`.
 
-- `lowest_listing_price_*` — current item price of the cheapest exact-product listing.
-- `lowest_listing_shipping_*` — shipping attached to that same listing when known.
-- `executable_floor_*` — item + displayed shipping when both are known.
-- `current_quantity` — exact product's current available quantity.
-- `current_sellers` — exact product's current seller count.
+Live Cardmarket English/NM article prices remain current replacement context rather than automatically becoming an Ireland-landed BUY. Shipping and landed cost still require separate validation.
 
-A legacy/provider field named `listing_count` is retained for audit/backwards compatibility but is **never used as exact live depth**, because search/provider result counts can differ from the exact product page's current quantity.
+## US Fair Value
 
-This means a card can correctly be classified as **high velocity + thin current supply**. Example: 107 sales in three months with only 4 copies from 2 sellers is a liquid card experiencing a tight live order book, not an illiquid card.
+US Fair Value is built separately from:
 
-The scanner additionally reports `tcgplayer_supply_coverage_days` and classifies live supply as `TIGHT`, `BALANCED`, `DEEP`, `NO_LIVE_SUPPLY`, `DEPTH_ONLY` or `UNKNOWN`.
+- TCGplayer Market Price;
+- TCGplayer most recent sale when available;
+- US/global eBay evidence from the project's `GLOBAL`/EBAY_US leg.
 
-The normalized input remains `data/reference/tcgplayer_market_reference.csv`, keyed to canonical Cardmarket `id_product`. Exact-ID mapping remains mandatory; name/collector-number-only provider rows are rejected by the importer.
+TCGplayer current sellers, current quantity and item+shipping floor remain live US order-book context. They do not become an Ireland acquisition route.
 
-If only USD values are supplied and no row-level FX is present, the configured USD->EUR fallback is used. Because TCGplayer and US eBay demand are correlated, TCGplayer receives a discounted market-breadth weight rather than being treated as a fully independent second US market.
+The `GLOBAL` eBay leg is treated as US/global context, not pure US-local evidence, because this project does not force physical item location for that leg.
 
-## Global fair value versus executable value
+## TCGplayer role
 
-`fair_value_eur` is explicitly scoped as **`GLOBAL_TRANSACTIONAL`**. It is a weighted median of transaction/market evidence and is not intended to answer "what would it cost me to replace this card in Europe right now?"
+TCGplayer's importance is deliberately reduced for normal Irish/EU deal evaluation.
 
-Current live asks are kept separate:
+It now primarily answers:
 
-- TCGplayer `executable_floor` is live US supply context and may include displayed domestic shipping; it is not an Ireland-landed acquisition price.
-- When the targeted live Cardmarket validator has at least two English/NM sellers, `eu_executable_value_eur` exposes the robust live Cardmarket article floor as **European replacement context**. It remains an article-price reference rather than confirmed Ireland-landed cost until shipping is independently known.
+> **Does the US/global market support the CardTrader price we hope to sell at?**
 
-This separation prevents a temporary supply squeeze from being confused with realized fair value and prevents a historical market price from being mistaken for the price a buyer can actually execute today.
+A low TCGplayer value can no longer drag an otherwise well-supported Cardmarket/EU eBay fair value down. Instead, it can reduce CardTrader exit confidence and the Bridge Opportunity Score.
 
-## Fair value
+TCGplayer transaction and live-order-book fields remain separated:
 
-Global transactional fair value is a **weighted median**, not an arithmetic average. This reduces the impact of one optimistic CardTrader seller or another single-market outlier.
+- Market Price / recent sale → US fair value and US price confidence;
+- 30d/90d sales / avg daily sold → US liquidity velocity;
+- current quantity / current sellers → exact live US depth;
+- lowest item + shipping → current US executable ask context;
+- legacy `listing_count` → audit only, never exact-product depth.
 
-Default evidence weights are approximately:
+## Regional confidence and liquidity
 
-- Cardmarket trend: 1.00;
-- strong eBay resale evidence: 1.20 (lower for weaker evidence);
-- strong TCGplayer transaction market reference: 0.95 (lower for weaker evidence);
-- CardTrader active exit ask: 0.10–0.50 depending on competing-seller depth.
+The legacy output fields remain for compatibility, but their meaning changes:
 
-TCGplayer live listing floor is **not** added as another fair-value point. The most recent sale is also not double-counted as an independent market when Market Price already summarizes TCGplayer transactions.
+- `liquidity_score` = **EU liquidity score** for an Ireland-based buyer;
+- `price_confidence_score` = **EU price-confidence score**;
+- `fair_value_eur` = **EU fair value**.
 
-Cross-market dispersion is the weighted median absolute percentage deviation from global transactional fair value. Lower dispersion increases both liquidity and price confidence.
+New explicit fields include:
 
-## LQS — Liquidity Quality Score
+- `eu_fair_value_eur`;
+- `eu_price_confidence_score`;
+- `eu_dispersion_pct`;
+- `us_fair_value_eur`;
+- `us_price_confidence_score`;
+- `us_liquidity_score`;
+- `us_dispersion_pct`.
 
-LQS uses a market-microstructure-style 100-point model:
+This prevents a liquid US card from being automatically labelled equally liquid in Europe, or vice versa.
 
-- **Velocity — 30 points:** confirmed eBay sales plus TCGplayer realized monthly-equivalent sales, with inferred eBay quick sales discounted.
-- **Depth — 25 points:** CardTrader competing sellers/units plus **TCGplayer current sellers/current quantity**. Legacy `listing_count` contributes zero points.
-- **Spread/convergence — 20 points:** tighter cross-market transaction pricing receives more points; wide disagreement is treated like a wide effective spread.
-- **Market breadth — 15 points:** Cardmarket, CardTrader, eBay and TCGplayer coverage, with TCGplayer discounted for correlation with US eBay.
-- **Immediacy — 10 points:** evidence that comparable copies actually transact rather than merely being listed.
+## CardTrader as bridge market
+
+CardTrader remains a modeled exit venue, but its higher price is now treated as a **bridge hypothesis**.
+
+For a CardTrader exit, the scanner asks:
+
+- Is the EU acquisition price attractive after landed cost?
+- Does CardTrader have enough competing sellers and units?
+- Is the CardTrader gross exit reasonably close to US Fair Value?
+- Are US price confidence and US liquidity strong enough to support that comparison?
+- Does the route still clear the configured net-profit and ROI thresholds?
+
+A high CardTrader ask that is unsupported by TCGplayer / US-global eBay receives a large discount in the bridge score even when the nominal CM→CT spread looks large.
+
+## BOS — Bridge Opportunity Score (0–100)
+
+BOS combines five components:
+
+- **Economic edge — 35 points:** expected net spread and ROI versus the route's price-band hurdle;
+- **US/global confirmation — 25 points:** alignment of CardTrader gross exit with US Fair Value, confidence-adjusted;
+- **CardTrader depth — 20 points:** competing sellers and units on the selected Direct/Zero channel;
+- **EU acquisition confidence — 10 points:** EU price-confidence contribution;
+- **Market liquidity — 10 points:** EU + US liquidity contribution.
+
+The total is then multiplied by a **US-support factor**. This is deliberate: a large nominal EU→CT price gap cannot compensate for an exit price that the US/global market does not support.
 
 Labels:
 
-- 85–100: `EXTREMELY_LIQUID`
-- 70–84: `HIGH`
-- 55–69: `MODERATE`
-- 40–54: `THIN`
-- below 40: `ILLIQUID`
-
-A tight current order book does not erase strong realized velocity. It reduces the depth component while transaction volume continues to support velocity/immediacy.
-
-## PCS — Price Confidence Score
-
-PCS uses:
-
-- **Cross-market convergence — 35 points**
-- **Transaction evidence — 25 points**
-- **Freshness — 15 points**
-- **Liquidity — 15 points**
-- **Identity/mapping quality — 10 points**
-
-Exact or human-verified CardTrader->Cardmarket mappings receive full identity credit. Ambiguous mappings are already blocked by the mapping guard and therefore cannot create a CardTrader arbitrage route.
-
-TCGplayer can increase PCS when its transaction market agrees with Cardmarket/eBay/CT, but a high live listing floor by itself cannot increase PCS as if it were a realized sale.
+- 85–100: `STRONG_BRIDGE`
+- 70–84: `GOOD_BRIDGE`
+- 55–69: `WATCH`
+- below 55: `WEAK_OR_UNSUPPORTED`
 
 ## ECS — Exit Confidence Score
 
-ECS is specific to the currently modeled sell channel.
+ECS remains venue-specific.
 
-For CardTrader exits, it combines:
+For CardTrader exits, it now emphasizes:
 
-- seller/unit depth (40 points);
-- alignment of the selected CT gross exit with global transactional fair value (35 points);
-- overall LQS (15 points);
-- confirmation from **transactional** eBay/TCGplayer evidence (10 points).
+- CT seller/unit depth;
+- alignment with **US Fair Value** when available;
+- US and EU liquidity;
+- BOS confirmation.
 
-The TCGplayer executable listing floor is intentionally not allowed to validate a high CardTrader exit by itself. An active ask can corroborate a supply squeeze, but it is not equivalent to a completed transaction.
+If no US reference is available, EU value can provide only a weak sanity check. This deliberately prevents an unsupported CardTrader premium from looking highly executable.
 
-For eBay exits, the depth component is based on evidence strength and confirmed sales rather than CardTrader order-book depth.
-
-A card can therefore have **high PCS but low ECS**. Example: CM/eBay/TCGplayer transactions imply EUR 60 while a thin CardTrader market asks EUR 95. The scanner may be highly confident that fair value is near EUR 60 while having low confidence that EUR 95 is an executable exit.
+For eBay exits, the existing evidence-strength and confirmed-sale logic remains, with EU fair value used as the price-alignment anchor for an Ireland-based buyer.
 
 ## Quality gates
 
-Default standard route gate:
+Standard route gate:
 
-- LQS >= 65
-- PCS >= 75
+- EU-LQS >= 65
+- EU-PCS >= 75
 - ECS >= 65
+- CardTrader routes additionally require BOS >= 65
 
 For acquisition cost >= EUR 50:
 
-- LQS >= 70
-- PCS >= 80
+- EU-LQS >= 70
+- EU-PCS >= 80
 - ECS >= 70
+- CardTrader routes additionally require BOS >= 70
 
-A route that previously qualified as `RESELL_TEST` but fails the applicable quality gate is downgraded to `WATCH_ONLY`. The market-quality layer never upgrades a weaker signal to `RESELL_TEST`; it is a risk-control layer, not a signal generator.
+Existing price-band requirements still apply independently. A quality failure can only downgrade `RESELL_TEST` to `WATCH_ONLY`; it cannot promote a weak route.
 
-Existing price-band rules continue to apply independently, including the EUR 50–100 requirement for at least EUR 15 expected net profit and 25% ROI.
+## Example
+
+If:
+
+- Cardmarket/EU value = EUR 100
+- CardTrader Zero gross exit = EUR 135
+- TCGplayer + US-global eBay = EUR 130
+
+then the CardTrader premium is plausibly supported and BOS can be high.
+
+If instead:
+
+- Cardmarket/EU value = EUR 100
+- CardTrader Zero gross exit = EUR 135
+- TCGplayer + US-global eBay = EUR 102
+
+then EU fair value stays near EUR 100, but BOS and CT ECS are sharply reduced. The scanner should report the CardTrader price as an unsupported bridge premium rather than a EUR 35 arbitrage opportunity.
 
 ## Outputs
 
 `output/market_quality.csv`, `output/market_routes.csv` and `output/core_watch_universe.csv` now expose:
 
-- global transactional fair value and scope;
-- cross-market dispersion;
-- optional current European EN/NM executable article context;
-- TCGplayer Market Price and most recent sale separately;
-- TCGplayer exact current quantity/sellers separately from legacy listing count;
-- TCGplayer item price, shipping and executable floor separately;
-- normalized monthly sales velocity;
-- supply coverage days/state;
-- LQS/PCS/ECS and labels;
-- gate profile/pass/failure reason.
+- EU fair value / EU confidence / EU liquidity;
+- US fair value / US confidence / US liquidity;
+- CardTrader premium versus EU and US values;
+- BOS and BOS label;
+- venue-specific ECS;
+- existing TCGplayer transaction/order-book diagnostics;
+- final quality-gate decision.
 
-The final route decision remains approximately:
+The resulting decision model is now approximately:
 
-`economic edge × price confidence × liquidity × exit confidence`
+`EU entry edge × EU price confidence × EU liquidity × selected-exit confidence × bridge support (when CT is the exit)`
 
-rather than simply `sell price - buy price`.
+rather than one blended global price.
