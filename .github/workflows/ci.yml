@@ -6,17 +6,22 @@ on:
     paths:
       - 'src/**'
       - 'scripts/**'
+      - 'dashboard/**'
       - 'tests/**'
       - 'config.yaml'
       - 'requirements.txt'
+      - 'requirements-dashboard.txt'
       - '.github/workflows/ci.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'scripts/**'
+      - 'dashboard/**'
       - 'tests/**'
       - 'config.yaml'
       - 'requirements.txt'
+      - 'requirements-dashboard.txt'
+      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
@@ -31,6 +36,8 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Compile dashboard/exporter
+        run: python -m py_compile dashboard/app.py scripts/export_dashboard_snapshot.py
       - name: Run tests
         env:
           PYTHONPATH: src
