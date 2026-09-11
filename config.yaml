@@ -1,4 +1,4 @@
-version: "0.6"
+version: "0.7"
 timezone: Europe/Dublin
 
 sources:
@@ -15,6 +15,7 @@ paths:
   ebay_watchlist: data/reference/ebay_watchlist.csv
   ebay_sold_evidence: data/reference/ebay_sold_evidence.csv
   market_events: data/reference/market_events.csv
+  gumtree_watchlist: data/reference/gumtree_watchlist.csv
 
 catalog:
   refresh_weekday: 4
@@ -218,6 +219,50 @@ market_signals:
   velocity_acceleration_ratio: 1.50
   velocity_cooling_ratio: 0.67
   meaningful_supply_change_pct: 10.0
+
+gumtree:
+  enabled: true
+  base_url: https://www.gumtree.com
+  timeout_seconds: 20
+  max_watch_products: 25
+  max_listing_price_gbp: 5000
+  # Broad discovery remains non-actionable until exact printing, language and
+  # condition are verified. Exact watch searches are run separately for NI and UK.
+  discovery_sources:
+    - region: NORTHERN_IRELAND
+      query: pokemon cards
+      url: https://www.gumtree.com/for-sale/uk/northern-ireland/srpsearch+pokemon-cards
+    - region: GREAT_BRITAIN
+      query: pokemon cards
+      url: https://www.gumtree.com/for-sale/uk/srpsearch+pokemon+cards
+  exact_search_locations:
+    NORTHERN_IRELAND: northern-ireland
+    GREAT_BRITAIN: uk
+
+fx:
+  # Frankfurter publishes ECB-derived daily FX. Fallbacks keep reports usable if
+  # the endpoint is unavailable, but fallback FX can never create STRONG_ARBITRAGE.
+  url: https://api.frankfurter.app/latest?from=EUR&to=GBP,USD
+  timeout_seconds: 10
+  fallback_gbp_to_eur: 1.16
+  fallback_usd_to_eur: 0.86
+
+arbitrage:
+  # Net edge after a conservative exit-cost reserve. These are planning reserves,
+  # not assertions about tax/customs/postage obligations for a specific trade.
+  minimum_net_spread_eur: 8.0
+  minimum_net_roi_pct: 25.0
+  exit_cost_pct: 8.0
+  require_exact_printing: true
+  require_english: true
+  require_nm: true
+  regions:
+    NORTHERN_IRELAND:
+      fixed_friction_eur: 2.0
+      friction_pct: 2.0
+    GREAT_BRITAIN:
+      fixed_friction_eur: 7.0
+      friction_pct: 10.0
 
 history_retention:
   # Inspired by mature collection trackers: keep detail where it matters without
