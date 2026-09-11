@@ -1,4 +1,4 @@
-version: "0.7"
+version: "0.8"
 timezone: Europe/Dublin
 
 sources:
@@ -70,9 +70,38 @@ cardtrader:
   actionable_en_nm_max_eur: 0.60
   candidate_generic_low_max_eur: 1.00
   max_candidate_products: 400
+  # In addition to cheap/popular discovery candidates, always bring a bounded
+  # set of validated Cardmarket sourcing products into the CT marketplace sync so
+  # v0.8 can evaluate Cardmarket -> CardTrader exits on the same run.
+  resale_validated_product_limit: 250
   auto_bootstrap_if_empty: true
   marketplace_delay_seconds: 1.05
   other_delay_seconds: 0.08
+
+cardtrader_resale:
+  enabled: true
+  # Conservative post-March-2026 EU seller rates. VAT is added to the commission
+  # by CardTrader; 23% is the Ireland-tuned planning default. Change these values
+  # if the account qualifies for grandfathered rates or different VAT treatment.
+  direct_fee_pct: 5.3
+  zero_fee_pct: 7.3
+  fee_vat_pct: 23.0
+  minimum_fee_eur: 0.01
+  # Active marketplace asks are not sold prices. The model assumes a listing just
+  # below the current English/NM competitive floor and requires seller depth.
+  undercut_eur: 0.01
+  minimum_competing_sellers: 2
+  # Small configurable planning reserves prevent Direct packaging and weekly Zero
+  # hub shipment from being silently treated as free. They are not platform fees.
+  direct_operational_reserve_eur: 0.15
+  zero_operational_reserve_eur: 0.50
+  minimum_net_spread_eur: 2.00
+  minimum_net_roi_pct: 25.0
+  # Used only when comparing CT net proceeds with the existing eBay exit route.
+  ebay_exit_cost_pct: 8.0
+  # Populate if the user's own CardTrader seller account later appears in the
+  # marketplace feed; self-listings must never establish the competitive floor.
+  excluded_seller_usernames: []
 
 sourcing:
   required_language: en
