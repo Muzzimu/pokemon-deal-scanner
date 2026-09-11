@@ -1,4 +1,4 @@
-version: "0.8.1"
+version: "0.8.2"
 timezone: Europe/Dublin
 
 sources:
@@ -98,8 +98,8 @@ cardtrader_resale:
   # Fallback thresholds for any acquisition cost not covered by a price band.
   minimum_net_spread_eur: 2.00
   minimum_net_roi_pct: 25.0
-  # v0.8.1: capital/risk-sensitive gates. Higher-value cards need larger absolute
-  # profit even when percentage ROI still looks attractive.
+  # Capital/risk-sensitive gates. Higher-value cards need larger absolute profit
+  # even when percentage ROI still looks attractive.
   price_bands:
     - label: MICRO_0_10
       max_acquisition_eur: 10
@@ -140,6 +140,32 @@ core_watch:
   minimum_ct_units: 2
   require_ebay_or_three_ct_sellers: true
   max_rows: 100
+
+cardmarket_live:
+  # v0.8.2: targeted live-offer validation. The production baseline remains the
+  # official Cardmarket catalogue/price-guide downloads. This layer only checks a
+  # small number of high-priority Core-watch gaps through an external REST provider.
+  enabled: true
+  provider: parsebot
+  api_key_env: PARSE_API_KEY
+  base_url: https://api.parse.bot/scraper/6e8ae7ea-a15a-4125-aada-1e116c8060b5
+  endpoint: get_card_listings
+  game: Pokemon
+  language: English
+  min_condition: NM
+  max_candidates_per_run: 20
+  watch_priorities:
+    - A
+    - B
+  minimum_ct_lag_score: 40
+  robust_floor_sample_size: 3
+  minimum_live_sellers: 2
+  stale_upward_pct: 10.0
+  cheaper_candidate_pct: 10.0
+  timeout_seconds: 30
+  # Conservative enough for Parse's current free-tier 5 req/min limit; reduce only
+  # if the connected plan explicitly permits a higher request rate.
+  request_delay_seconds: 12.5
 
 sourcing:
   required_language: en
