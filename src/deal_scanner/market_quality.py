@@ -473,13 +473,19 @@ def _bridge_opportunity_score(
     depth = min(12.0, sellers / 5.0 * 12.0) + min(8.0, units / 12.0 * 8.0)
     eu_confidence = 10.0 * eu_pcs / 100.0
     liquidity = 10.0 * ((eu_lqs + us_lqs) / 2.0) / 100.0
-    score = int(round(max(0.0, min(100.0, economic + us_support + depth + eu_confidence + liquidity))))
+    raw_score = economic + us_support + depth + eu_confidence + liquidity
+    # CardTrader is the bridge market: when its premium is not supported by the
+    # US/global reference, the apparent edge must be heavily discounted rather
+    # than rescued by a large nominal spread alone.
+    support_factor = 0.45 + 0.55 * (us_support / 25.0) if us_fair and us_fair > 0 else 0.45
+    score = int(round(max(0.0, min(100.0, raw_score * support_factor))))
     return score, {
         "economic": round(economic, 1),
         "us_support": round(us_support, 1),
         "depth": round(depth, 1),
         "eu_confidence": round(eu_confidence, 1),
         "liquidity": round(liquidity, 1),
+        "support_factor": round(support_factor, 3),
     }
 
 
@@ -684,7 +690,6 @@ def apply_market_quality(
             "name": row.get("name") or "",
             "expansion_name": row.get("expansion_name") or "",
             "number": row.get("number") or "",
-            # Backward-compatible fair_value_eur now means EU fair value.
             "fair_value_eur": eu_fair if eu_fair is not None else "",
             "fair_value_scope": "EU_TRANSACTIONAL",
             "eu_fair_value_eur": eu_fair if eu_fair is not None else "",
@@ -706,7 +711,6 @@ def apply_market_quality(
             "bridge_us_support_pct": "" if us_support is None else us_support,
             "bridge_ct_premium_vs_eu_pct": "" if ct_vs_eu is None else ct_vs_eu,
             "bridge_ct_premium_vs_us_pct": "" if ct_vs_us is None else ct_vs_us,
-            # Legacy aliases now point to EU/Ireland-facing metrics.
             "cross_market_dispersion_pct": "" if eu_dispersion is None else round(eu_dispersion, 1),
             "independent_market_count": len(eu_sources),
             "tcgplayer_market_eur": tcg_market if tcg_market is not None else "",
