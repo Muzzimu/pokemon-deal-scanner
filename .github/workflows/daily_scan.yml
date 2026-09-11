@@ -25,6 +25,7 @@ env:
   CARDTRADER_API_TOKEN: ${{ secrets.CARDTRADER_API_TOKEN }}
   EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
   EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+  PARSE_API_KEY: ${{ secrets.PARSE_API_KEY }}
 
 jobs:
   scan:
