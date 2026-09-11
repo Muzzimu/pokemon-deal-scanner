@@ -15,6 +15,7 @@ The purpose is to keep three questions separate for every card the scanner can e
 | Source | Buy | Value | Sell | Bundle/local context | Data path |
 | --- | --- | --- | --- | --- | --- |
 | Cardmarket | Primary | Primary | Secondary | — | Official catalogue + price-guide downloads; manually/externally validated EN/NM Ireland-eligible landed offers |
+| Cardmarket live validator | Verification only | Supporting context | — | — | Low-volume exact-product third-party REST lookup; article price is never treated as Ireland-landed cost without shipping evidence |
 | CardTrader | Secondary | Secondary | **Primary test from v0.8** | — | Official CardTrader API v2 marketplace offers, mapped to Cardmarket product IDs |
 | eBay Browse API | — | Secondary | Primary | — | Official active-listing API with item-location checks and regional separation |
 | eBay Product Research | — | Primary sold evidence | Primary sold evidence | — | Manual Seller Hub research, normalized into reference CSVs |
@@ -58,6 +59,14 @@ Second, Cardmarket -> CardTrader gaps receive a **0–100 CT lag score**. The sc
 
 The scanner also writes `output/core_watch_universe.csv`: an evidence-driven watch universe for covered cards in the configured value range with sufficient CT depth and cross-market confirmation. It is not a fixed list of famous Pokémon and it is not claimed to be a complete market-liquidity ranking.
 
+## v0.8.2 targeted live Cardmarket validation
+
+The Core watch universe is now also the budget/rate-limit gate for optional live Cardmarket offer validation. The current provider implementation is Parse.bot's public Cardmarket wrapper, but the normalized validation logic is provider-neutral.
+
+Only high-priority exact Cardmarket product IDs are queried. English/NM article prices can confirm that the previous sourcing evidence is still plausible or show that it needs revalidation. They cannot establish a new Ireland-landed BUY by themselves because shipping is not part of the current live-provider evidence.
+
+The live layer can downgrade stale routes (`REVALIDATE_SOURCE`) but cannot upgrade a cheaper article into a BUY without separate shipping/landed-cost verification. No Cardmarket login credentials, cookies, proxy rotation or anti-bot bypass logic are part of the scanner.
+
 ## Market-route output
 
 `output/market_routes.csv` represents cards for which the project has validated Cardmarket landed sourcing evidence and then shows:
@@ -71,14 +80,16 @@ The scanner also writes `output/core_watch_universe.csv`: an evidence-driven wat
 - the best modeled sell channel after fees/reserves;
 - price-band requirements and manual-verification flag;
 - CT/CM lag metrics;
+- optional live Cardmarket validation fields;
 - net spread, ROI, route signal and confidence.
 
-The route file deliberately distinguishes **validated landed cost** from **observed marketplace article price**. CardTrader can therefore be visibly cheaper than Cardmarket without automatically becoming the chosen acquisition route until its buyer-side landed cost is known.
+The route file deliberately distinguishes **validated landed cost** from **observed marketplace article price**. CardTrader or a third-party Cardmarket live feed can therefore be visibly cheaper without automatically becoming the chosen acquisition route until buyer-side landed cost is known.
 
 ## Evidence discipline
 
 - Cardmarket generic low remains discovery-only.
 - Exact printing, language and condition must match before an actionable route is emitted.
+- Third-party Cardmarket live article prices are verification evidence, not Ireland-landed acquisition evidence.
 - CardTrader and eBay active asks are not sold evidence.
 - eBay Product Research / confirmed sold evidence outranks active-market asks for valuation.
 - Local-platform accepted offers and sold markers retain their existing evidence hierarchy.
