@@ -12,6 +12,7 @@ This file is the concise operating contract for any coding/research agent modify
   - `docs/MODEL_VALIDATION.md`
   - `docs/SOURCE_ROLE_MATRIX.md`
   - `docs/TCGCSV_INTEGRATION.md`
+  - `docs/DASHBOARD.md` when changing the UI/display layer
   - relevant recent commits/issues.
 - Do not silently revert newer rules because an older chat, note, or example differs.
 - Add/update tests whenever changing pricing guardrails, market-role logic, source eligibility, identity mapping, model validation, or workflow scheduling.
@@ -121,6 +122,7 @@ These are different quantities.
 Prefer deterministic Python for identity, calculations, gates, persistence, and execution.
 
 - AI/LLM components, if added later, are advisory/critic layers only unless a versioned design explicitly changes this.
+- Optional UI/dashboard code is a display layer: it must not create alternative fair values, BUY gates, fuzzy identity joins, or mutable forecast history.
 - Optional data sources should degrade gracefully: `OK`, `STALE`, `DEGRADED`, `RATE_LIMITED`, `MAPPING_UNCERTAIN`, `UNAVAILABLE`, or `QUARANTINED` rather than silently fabricating values.
 - One source outage must not poison unrelated sources.
 - Never expose secrets in logs, commits, docs, or chat.
