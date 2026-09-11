@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import csv
+import html as html_lib
 import re
 from datetime import date
-from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import quote_plus, urljoin
 
@@ -40,16 +40,17 @@ OUTPUT_FIELDS = [
     "identification_source", "language_status", "condition_status", "source_query",
 ]
 
-LISTING_HREF_RE = re.compile(r"/p/[^?#]+/(\d+)(?:[?#].*)?$", re.I)
+ANCHOR_RE = re.compile(
+    r"""<a\b[^>]*href=["']([^"']*/p/[^"']+?/\d+(?:\?[^"']*)?)["'][^>]*>(.*?)</a>""",
+    re.I | re.S,
+)
 PRICE_RE = re.compile(r"£\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)")
 COUNT_RE = re.compile(r"^\d+(?:/\d+)?$")
-
 NON_ENGLISH_HINTS = {
     "japanese", "japanisch", "japonais", "giapponese", "japones",
     "german", "deutsch", "italian", "italiano", "french", "francais",
     "spanish", "espanol", "korean", "chinese", "simplified chinese",
 }
-
 NI_MARKERS = {
     "northern ireland", "belfast", "county antrim", "county down", "county armagh",
     "county tyrone", "county fermanagh", "county londonderry", "county derry",
@@ -66,8 +67,7 @@ def ensure_gumtree_schema(conn) -> None:
 
 def _norm(value: str | None) -> str:
     text = str(value or "").lower().replace("é", "e").replace("è", "e")
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text)).strip()
 
 
 def infer_language_status(text: str) -> str:
@@ -90,113 +90,59 @@ def infer_condition_status(text: str) -> str:
 
 def classify_region(location: str | None, source_region: str | None = None) -> str:
     text = _norm(location)
-    if source_region and str(source_region).upper() == "NORTHERN_IRELAND":
+    if str(source_region or "").upper() == "NORTHERN_IRELAND":
         return "NORTHERN_IRELAND"
-    if any(marker in text for marker in NI_MARKERS):
-        return "NORTHERN_IRELAND"
-    return "GREAT_BRITAIN"
+    return "NORTHERN_IRELAND" if any(x in text for x in NI_MARKERS) else "GREAT_BRITAIN"
 
 
-def _meaningful_chunk(chunk: str) -> bool:
-    text = " ".join(str(chunk or "").split()).strip()
-    if not text:
-        return False
-    lower = text.lower()
-    if COUNT_RE.match(text):
-        return False
-    if lower in {"featured", "delivery only", "one place for all your ads", "post an ad"}:
-        return False
-    if PRICE_RE.fullmatch(text):
-        return False
-    return True
+def _meaningful(text: str) -> bool:
+    value = " ".join(str(text or "").split()).strip()
+    return bool(
+        value
+        and not COUNT_RE.fullmatch(value)
+        and not PRICE_RE.fullmatch(value)
+        and value.lower() not in {"featured", "delivery only", "one place for all your ads", "post an ad"}
+    )
 
 
-class GumtreeSearchParser(HTMLParser):
-    """Extract listing anchors without depending on Gumtree CSS class names."""
+def parse_search_html(page_html: str, base_url: str = "https://www.gumtree.com") -> list[dict]:
+    """Parse listing anchors without relying on unstable Gumtree CSS classes.
 
-    def __init__(self, base_url: str = "https://www.gumtree.com") -> None:
-        super().__init__(convert_charrefs=True)
-        self.base_url = base_url
-        self._capture = False
-        self._href = ""
-        self._listing_id = ""
-        self._depth = 0
-        self._chunks: list[str] = []
-        self.rows: list[dict] = []
-
-    def handle_starttag(self, tag: str, attrs) -> None:
-        if self._capture:
-            self._depth += 1
-            return
-        if tag.lower() != "a":
-            return
-        href = dict(attrs).get("href") or ""
-        match = LISTING_HREF_RE.search(href)
-        if not match:
-            return
-        self._capture = True
-        self._href = href
-        self._listing_id = match.group(1)
-        self._depth = 1
-        self._chunks = []
-
-    def handle_data(self, data: str) -> None:
-        if not self._capture:
-            return
-        text = " ".join(data.split()).strip()
-        if text:
-            self._chunks.append(text)
-
-    def handle_endtag(self, tag: str) -> None:
-        if not self._capture:
-            return
-        self._depth -= 1
-        if self._depth > 0:
-            return
-        self._finish_anchor()
-
-    def _finish_anchor(self) -> None:
-        chunks = []
-        for raw in self._chunks:
-            text = " ".join(raw.split()).strip()
-            if text and (not chunks or text != chunks[-1]):
-                chunks.append(text)
+    Tags inside each result anchor, including void image tags, become newlines so
+    the parser does not depend on balanced nested HTML.
+    """
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for href, body in ANCHOR_RE.findall(page_html or ""):
+        parts = href.split("?", 1)[0].rstrip("/").split("/")
+        listing_id = parts[-1] if parts and parts[-1].isdigit() else ""
+        if not listing_id or listing_id in seen:
+            continue
+        text = re.sub(r"<[^>]+>", "\n", body)
+        chunks = [" ".join(html_lib.unescape(x).split()).strip() for x in text.splitlines()]
+        chunks = [x for x in chunks if x]
         blob = " ".join(chunks)
         price_match = PRICE_RE.search(blob)
-        if price_match:
-            price = float(price_match.group(1).replace(",", ""))
-            meaningful = [c for c in chunks if _meaningful_chunk(c)]
-            title = meaningful[0] if meaningful else ""
-            price_index = next((i for i, c in enumerate(chunks) if PRICE_RE.search(c)), len(chunks))
-            before_price = [c for c in chunks[:price_index] if _meaningful_chunk(c)]
-            location = before_price[-1] if len(before_price) >= 2 else ""
-            description_parts = before_price[1:-1] if len(before_price) >= 3 else before_price[1:]
-            self.rows.append({
-                "listing_id": self._listing_id,
-                "url": urljoin(self.base_url, self._href),
-                "title": title,
-                "description": " ".join(description_parts).strip(),
-                "price_gbp": price,
-                "location": location,
-            })
-        self._capture = False
-        self._href = ""
-        self._listing_id = ""
-        self._depth = 0
-        self._chunks = []
-
-
-def parse_search_html(html: str, base_url: str = "https://www.gumtree.com") -> list[dict]:
-    parser = GumtreeSearchParser(base_url)
-    parser.feed(html or "")
-    seen: set[str] = set()
-    out = []
-    for row in parser.rows:
-        if row["listing_id"] in seen:
+        if not price_match:
             continue
-        seen.add(row["listing_id"])
-        out.append(row)
-    return out
+        meaningful = [x for x in chunks if _meaningful(x)]
+        if not meaningful:
+            continue
+        price_index = next((i for i, x in enumerate(chunks) if PRICE_RE.search(x)), len(chunks))
+        before_price = [x for x in chunks[:price_index] if _meaningful(x)]
+        title = meaningful[0]
+        location = before_price[-1] if len(before_price) >= 2 else ""
+        description = " ".join(before_price[1:-1] if len(before_price) >= 3 else before_price[1:])
+        seen.add(listing_id)
+        rows.append({
+            "listing_id": listing_id,
+            "url": urljoin(base_url, href),
+            "title": title,
+            "description": description,
+            "price_gbp": float(price_match.group(1).replace(",", "")),
+            "location": location,
+        })
+    return rows
 
 
 class GumtreeClient:
@@ -244,9 +190,7 @@ def _identify_from_watchlist(row: dict, watch_rows: list[dict]) -> tuple[int | N
             continue
         if pid > 0 and title_matches(text, watch):
             matches.append(pid)
-    if len(set(matches)) == 1:
-        return matches[0], "watchlist_exact_tokens"
-    return None, ""
+    return (matches[0], "watchlist_exact_tokens") if len(set(matches)) == 1 else (None, "")
 
 
 def _persist_listing(conn, row: dict, snapshot_date: str) -> None:
@@ -269,11 +213,10 @@ def _persist_listing(conn, row: dict, snapshot_date: str) -> None:
         """,
         (
             row["listing_id"], row["url"], row["title"], row.get("description") or "",
-            row["price_gbp"], row.get("location") or "", row["region"],
-            row.get("id_product"), int(bool(row.get("exact_match"))),
-            row.get("identification_source") or "", row.get("language_status") or "UNKNOWN",
-            row.get("condition_status") or "UNKNOWN", row.get("source_query") or "",
-            snapshot_date, snapshot_date,
+            row["price_gbp"], row.get("location") or "", row["region"], row.get("id_product"),
+            int(bool(row.get("exact_match"))), row.get("identification_source") or "",
+            row.get("language_status") or "UNKNOWN", row.get("condition_status") or "UNKNOWN",
+            row.get("source_query") or "", snapshot_date, snapshot_date,
         ),
     )
 
@@ -287,7 +230,6 @@ def scan_gumtree(conn, cfg: dict, watchlist_path: Path, output_path: Path, *, to
     client = GumtreeClient(cfg)
     max_price = float(gcfg.get("max_listing_price_gbp", 5000))
     enabled = bool(gcfg.get("enabled", True))
-
     collected: dict[str, dict] = {}
     searches = failures = rejected_price = 0
     errors: list[str] = []
@@ -306,9 +248,7 @@ def scan_gumtree(conn, cfg: dict, watchlist_path: Path, output_path: Path, *, to
             row["language_status"] = infer_language_status(blob)
             row["condition_status"] = infer_condition_status(blob)
             pid, source = _identify_from_watchlist(row, watch_rows)
-            row["id_product"] = pid
-            row["exact_match"] = int(pid is not None)
-            row["identification_source"] = source
+            row["id_product"], row["exact_match"], row["identification_source"] = pid, int(pid is not None), source
             prior = collected.get(row["listing_id"])
             if prior and prior.get("exact_match") and not row.get("exact_match"):
                 continue
@@ -320,19 +260,14 @@ def scan_gumtree(conn, cfg: dict, watchlist_path: Path, output_path: Path, *, to
             if not url:
                 continue
             try:
-                consume(
-                    client.fetch_search_url(url),
-                    str(source.get("query") or "pokemon cards"),
-                    str(source.get("region") or ""),
-                )
+                consume(client.fetch_search_url(url), str(source.get("query") or "pokemon cards"), str(source.get("region") or ""))
                 searches += 1
             except Exception as exc:
                 failures += 1
                 errors.append(f"discovery {source.get('region')}: {type(exc).__name__}: {exc}")
 
         exact_locations = gcfg.get("exact_search_locations") or {
-            "NORTHERN_IRELAND": "northern-ireland",
-            "GREAT_BRITAIN": "uk",
+            "NORTHERN_IRELAND": "northern-ireland", "GREAT_BRITAIN": "uk",
         }
         for watch in watch_rows:
             query = str(watch.get("search_query") or "").strip()
@@ -349,11 +284,7 @@ def scan_gumtree(conn, cfg: dict, watchlist_path: Path, output_path: Path, *, to
     rows = []
     for row in collected.values():
         _persist_listing(conn, row, today_s)
-        rows.append({
-            "snapshot_date": today_s,
-            **row,
-            "product_name": _product_name(conn, row.get("id_product")),
-        })
+        rows.append({"snapshot_date": today_s, **row, "product_name": _product_name(conn, row.get("id_product"))})
     conn.commit()
     rows.sort(key=lambda r: (0 if r.get("region") == "NORTHERN_IRELAND" else 1, r.get("price_gbp") or 999999))
 
@@ -374,8 +305,7 @@ def scan_gumtree(conn, cfg: dict, watchlist_path: Path, output_path: Path, *, to
         "rejected_placeholder_or_extreme_prices": rejected_price,
         "errors": errors[:10],
         "note": (
-            "Gumtree is treated as a discovery/acquisition source. A failed fetch never "
-            "implies a listing sold or disappeared, and ambiguous listings never receive "
-            "an exact-card price signal."
+            "Gumtree is a discovery/acquisition source. Failed fetches never imply a sale, "
+            "and ambiguous listings never receive an exact-card price signal."
         ),
     }
