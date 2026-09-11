@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -20,6 +21,40 @@ NEEDS_EVIDENCE_SIGNALS = {
     "VERIFY_VARIANT",
     "VERIFY_CONDITION_LANGUAGE",
     "POSSIBLE_ARBITRAGE",
+}
+
+SCORE_FIELDS = {
+    "PCS": ("eu_price_confidence_score", "eu_price_confidence_label"),
+    "LQS": ("eu_liquidity_score", "liquidity_label"),
+    "ECS": ("exit_confidence_score", "exit_confidence_label"),
+    "BOS": ("bridge_opportunity_score", "bridge_opportunity_label"),
+}
+
+GATE_NAME_MAP = {
+    "EU-PCS": "PCS",
+    "EU-LQS": "LQS",
+    "PCS": "PCS",
+    "LQS": "LQS",
+    "ECS": "ECS",
+    "BOS": "BOS",
+}
+
+SCORE_LABEL_RED = {
+    "VERY_LOW",
+    "LOW",
+    "ILLIQUID",
+    "WEAK",
+    "WEAK_OR_UNSUPPORTED",
+    "UNSUPPORTED",
+}
+SCORE_LABEL_AMBER = {"MEDIUM", "MIXED", "MODERATE"}
+SCORE_LABEL_GREEN = {
+    "HIGH",
+    "VERY_HIGH",
+    "LIQUID",
+    "STRONG",
+    "STRONG_OR_SUPPORTED",
+    "SUPPORTED",
 }
 
 
@@ -152,6 +187,123 @@ def route_sort_key(row: dict):
     )
 
 
+def human_channel(value) -> str:
+    channel = clean_text(value)
+    if not channel:
+        return "No validated exit"
+    known = {
+        "CARDTRADER_ZERO": "CardTrader Zero",
+        "CARDTRADER_DIRECT": "CardTrader Direct",
+        "EBAY": "eBay",
+        "EBAY_IE": "eBay Ireland",
+        "EBAY_EU": "eBay EU",
+        "CARDMARKET": "Cardmarket",
+        "ADVERTS": "Adverts",
+        "GUMTREE": "Gumtree",
+    }
+    return known.get(channel.upper(), channel.replace("_", " ").title())
+
+
+def score_from(row: dict, primary: str, fallback: str | None = None):
+    value = row.get(primary)
+    if value not in (None, ""):
+        return value
+    return row.get(fallback) if fallback else None
+
+
+def parse_gate_failures(reason: str | None) -> dict[str, tuple[float, float]]:
+    failures: dict[str, tuple[float, float]] = {}
+    text = clean_text(reason)
+    if not text:
+        return failures
+    for raw in text.split(";"):
+        match = re.search(r"([A-Z-]+)\s*([0-9.]+)\s*<\s*([0-9.]+)", raw.strip().upper())
+        if not match:
+            continue
+        metric = GATE_NAME_MAP.get(match.group(1))
+        if metric:
+            failures[metric] = (float(match.group(2)), float(match.group(3)))
+    return failures
+
+
+def score_badge(metric: str, row: dict) -> str:
+    field, label_field = SCORE_FIELDS[metric]
+    if metric == "LQS":
+        value = score_from(row, field, "liquidity_score")
+    else:
+        value = row.get(field)
+    number = as_float(value)
+    if number is None:
+        return f"⚪ {metric} —"
+
+    label = (clean_text(row.get(label_field)) or "").upper()
+    failures = parse_gate_failures(row.get("quality_gate_reason"))
+
+    if label in SCORE_LABEL_RED:
+        icon = "🔴"
+    elif label in SCORE_LABEL_AMBER:
+        icon = "🟠"
+    elif label in SCORE_LABEL_GREEN:
+        icon = "🟢"
+    elif metric in failures:
+        actual, threshold = failures[metric]
+        icon = "🟠" if threshold - actual <= 10 else "🔴"
+    else:
+        icon = "⚪"
+
+    return f"{icon} {metric} {number:.0f}"
+
+
+def eu_position_text(row: dict) -> str | None:
+    buy = as_float(row.get("best_validated_buy_eur"))
+    fair = as_float(row.get("eu_fair_value_eur"))
+    if buy is None or fair is None or fair <= 0:
+        return None
+    pct = ((buy / fair) - 1.0) * 100.0
+    if abs(pct) < 2:
+        return "Buy is roughly in line with EU fair value."
+    if pct > 0:
+        return f"Buy is {pct:.1f}% above EU fair value — this is not an EU-discount play."
+    return f"Buy is {abs(pct):.1f}% below EU fair value."
+
+
+def plain_gate_explanation(row: dict) -> str | None:
+    signal = str(row.get("route_signal") or "").upper()
+    failures = parse_gate_failures(row.get("quality_gate_reason"))
+
+    intro = {
+        "INSUFFICIENT_EXIT_REFERENCE": "No sufficiently strong exit reference yet.",
+        "REVALIDATE_SOURCE": "The acquisition source needs revalidation.",
+        "VERIFY_VARIANT": "The exact printing or variant still needs verification.",
+        "VERIFY_CONDITION_LANGUAGE": "Condition or language still needs verification.",
+        "WATCH_ONLY": "The scanner keeps this on WATCH.",
+        "POSSIBLE_ARBITRAGE": "The opportunity is not strong enough to be treated as confirmed arbitrage.",
+    }.get(signal)
+
+    phrases = []
+    for metric in ("LQS", "PCS", "ECS", "BOS"):
+        if metric not in failures:
+            continue
+        actual, threshold = failures[metric]
+        label = {
+            "LQS": "liquidity",
+            "PCS": "price confidence",
+            "ECS": "exit confidence",
+            "BOS": "bridge support",
+        }[metric]
+        phrases.append(f"{label} is below its route gate ({actual:.0f} vs {threshold:.0f})")
+
+    if intro and phrases:
+        return f"{intro} " + "; ".join(phrases) + "."
+    if intro:
+        return intro
+    if phrases:
+        return "; ".join(phrases).capitalize() + "."
+
+    raw = clean_text(row.get("quality_gate_reason"))
+    return raw
+
+
 def latest_predictions(conn: sqlite3.Connection) -> list[dict]:
     if not table_exists(conn, "model_predictions"):
         return []
@@ -221,13 +373,6 @@ def latest_outcomes(conn: sqlite3.Connection, pid: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def score_from(row: dict, primary: str, fallback: str | None = None):
-    value = row.get(primary)
-    if value not in (None, ""):
-        return value
-    return row.get(fallback) if fallback else None
-
-
 def route_summary_rows(rows: list[dict]) -> list[dict]:
     result = []
     for row in sorted(rows, key=route_sort_key):
@@ -237,8 +382,9 @@ def route_summary_rows(rows: list[dict]) -> list[dict]:
                 "Signal": signal_label(row.get("route_signal")),
                 "Buy": as_float(row.get("best_validated_buy_eur")),
                 "EU fair": as_float(row.get("eu_fair_value_eur")),
-                "Best net exit": as_float(row.get("best_sell_net_eur")),
-                "Net profit": as_float(row.get("net_spread_eur")),
+                "Exit route": human_channel(row.get("best_sell_channel")),
+                "Modelled net exit": as_float(row.get("best_sell_net_eur")),
+                "Modelled net profit": as_float(row.get("net_spread_eur")),
                 "ROI %": as_float(row.get("net_roi_pct")),
                 "PCS": as_float(row.get("eu_price_confidence_score")),
                 "LQS": as_float(score_from(row, "eu_liquidity_score", "liquidity_score")),
@@ -266,32 +412,44 @@ def discovery_summary_rows(rows: list[dict]) -> list[dict]:
     return result
 
 
+def render_score_line(row: dict) -> None:
+    badges = [score_badge(metric, row) for metric in ("PCS", "LQS", "ECS", "BOS")]
+    st.markdown(" · ".join(f"**{badge}**" for badge in badges))
+
+
 def render_route_card(row: dict) -> None:
     with st.container(border=True):
         st.markdown(f"#### {short_name(row.get('name'))}")
         st.caption(card_context(row))
         st.markdown(f"**{signal_label(row.get('route_signal'))}**")
 
+        exit_channel = human_channel(row.get("best_sell_channel"))
+        st.markdown(f"**Exit route:** {exit_channel}")
+
         p1, p2 = st.columns(2)
         p1.metric("Validated buy", format_eur(row.get("best_validated_buy_eur")))
-        p2.metric("Best net exit", format_eur(row.get("best_sell_net_eur")))
+        p2.metric("EU fair value", format_eur(row.get("eu_fair_value_eur")))
 
         p3, p4 = st.columns(2)
-        p3.metric("Net profit", format_eur(row.get("net_spread_eur")))
-        p4.metric("ROI", format_pct(row.get("net_roi_pct")))
+        p3.metric("Modelled net exit", format_eur(row.get("best_sell_net_eur")))
+        p4.metric("Modelled net profit", format_eur(row.get("net_spread_eur")))
 
-        st.caption(
-            "EU fair "
-            f"{format_eur(row.get('eu_fair_value_eur'))} · "
-            f"PCS {format_score(row.get('eu_price_confidence_score'))} · "
-            f"LQS {format_score(score_from(row, 'eu_liquidity_score', 'liquidity_score'))} · "
-            f"ECS {format_score(row.get('exit_confidence_score'))} · "
-            f"BOS {format_score(row.get('bridge_opportunity_score'))}"
-        )
+        st.markdown(f"**Modelled ROI:** {format_pct(row.get('net_roi_pct'))}")
 
-        reason = clean_text(row.get("quality_gate_reason"))
-        if reason:
-            st.caption(f"Gate: {reason}")
+        position = eu_position_text(row)
+        if position:
+            st.caption(position)
+
+        render_score_line(row)
+
+        explanation = plain_gate_explanation(row)
+        if explanation:
+            st.markdown(f"**Why not actionable:** {explanation}")
+
+        raw_reason = clean_text(row.get("quality_gate_reason"))
+        if raw_reason:
+            with st.expander("Show numeric gate detail"):
+                st.code(raw_reason)
 
 
 st.set_page_config(page_title="Pokémon Deal Scanner", page_icon="🃏", layout="wide")
@@ -315,8 +473,7 @@ if db_path.exists():
     data_updated = predictions[0]["snapshot_date"] if predictions else "unknown"
     scanner_version = str(cfg.get("version") or "unknown")
 elif snapshot:
-    # Hosted mode: no API credentials and no mutable scanner database. GitHub
-    # Actions publishes a whitelisted market/model snapshot after successful runs.
+    # Hosted mode: no API credentials and no mutable scanner database.
     predictions = list(snapshot.get("latest_predictions") or [])
     routes = list(snapshot.get("market_routes") or [])
     discovery = list(snapshot.get("discovery_candidates") or [])
@@ -328,7 +485,9 @@ elif snapshot:
     scanner_version = str(snapshot.get("scanner_version") or cfg.get("version") or "unknown")
 else:
     st.error("No scanner database or hosted dashboard snapshot is available yet.")
-    st.info("Run the daily scanner once; GitHub Actions will then publish the dashboard snapshot automatically.")
+    st.info(
+        "Run the daily scanner once; GitHub Actions will then publish the dashboard snapshot automatically."
+    )
     st.stop()
 
 for key in ("t7", "t7_cards", "t30", "t30_cards"):
@@ -353,10 +512,22 @@ with tab_today:
     st.markdown(f"### {latest_date} market review")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Resell tests", resell_count, help="Existing scanner RESELL_TEST / STRONG_ARBITRAGE signals.")
+    c1.metric(
+        "Resell tests",
+        resell_count,
+        help="Existing scanner RESELL_TEST / STRONG_ARBITRAGE signals.",
+    )
     c2.metric("Watch", watch_count, help="Existing scanner WATCH_ONLY signals.")
-    c3.metric("Needs evidence", needs_count, help="Routes blocked pending stronger evidence or revalidation.")
-    c4.metric("Discovery queue", len(discovery), help="Pre-route sourcing candidates from top_flips.csv.")
+    c3.metric(
+        "Needs evidence",
+        needs_count,
+        help="Routes blocked pending stronger evidence or revalidation.",
+    )
+    c4.metric(
+        "Discovery queue",
+        len(discovery),
+        help="Pre-route sourcing candidates from top_flips.csv.",
+    )
 
     st.caption(
         "The dashboard does not promote or downgrade cards. These buckets only present the "
@@ -378,7 +549,11 @@ with tab_today:
         {clean_text(r.get("price_band")) for r in routes if clean_text(r.get("price_band"))}
     )
     selected_bands = f2.multiselect("Price bands", options=price_bands, default=price_bands)
-    search_text = f3.text_input("Find card", placeholder="e.g. Dragonite, Pikachu, Charizard").strip().lower()
+    search_text = (
+        f3.text_input("Find card", placeholder="e.g. Dragonite, Pikachu, Charizard")
+        .strip()
+        .lower()
+    )
 
     priority = []
     for row in routes:
@@ -402,50 +577,23 @@ with tab_today:
                 with cols[offset]:
                     render_route_card(row)
         if len(priority) > 6:
-            st.caption(f"Showing the first 6 of {len(priority)} filtered routes. Full list below.")
+            st.caption(f"Showing the first 6 of {len(priority)} filtered routes.")
     else:
         st.info("No current routed cards match these filters.")
-
-    st.subheader("All routed cards")
-    show_no_edge = st.checkbox("Include NO_EDGE", value=False)
-    table_routes = [
-        row for row in routes
-        if show_no_edge or str(row.get("route_signal") or "").upper() != "NO_EDGE"
-    ]
-    if search_text:
-        table_routes = [
-            row for row in table_routes
-            if search_text in str(row.get("name") or "").lower()
-        ]
-
-    if table_routes:
-        st.dataframe(
-            route_summary_rows(table_routes),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Buy": st.column_config.NumberColumn(format="€%.2f"),
-                "EU fair": st.column_config.NumberColumn(format="€%.2f"),
-                "Best net exit": st.column_config.NumberColumn(format="€%.2f"),
-                "Net profit": st.column_config.NumberColumn(format="€%.2f"),
-                "ROI %": st.column_config.NumberColumn(format="%.1f%%"),
-            },
-        )
-    else:
-        st.info("No routed cards to display.")
 
     st.divider()
     st.subheader("Discovery queue")
     st.caption(
         "Broader sourcing candidates from `top_flips.csv`. These are **pre-route discovery** "
-        "signals, not final resale recommendations; the normal identity, landed-cost and market-quality "
+        "signals, not final resale recommendations. Identity, landed-cost and market-quality "
         "gates still apply before a route can become actionable."
     )
     if discovery:
         discovery_view = discovery
         if search_text:
             discovery_view = [
-                row for row in discovery
+                row
+                for row in discovery
                 if search_text in str(row.get("name") or "").lower()
             ]
         st.dataframe(
@@ -465,6 +613,36 @@ with tab_today:
     else:
         st.info("No discovery candidates are included in this dashboard snapshot yet.")
 
+    with st.expander("All routed cards"):
+        show_no_edge = st.checkbox("Include NO_EDGE", value=False)
+        table_routes = [
+            row
+            for row in routes
+            if show_no_edge or str(row.get("route_signal") or "").upper() != "NO_EDGE"
+        ]
+        if search_text:
+            table_routes = [
+                row
+                for row in table_routes
+                if search_text in str(row.get("name") or "").lower()
+            ]
+
+        if table_routes:
+            st.dataframe(
+                route_summary_rows(table_routes),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Buy": st.column_config.NumberColumn(format="€%.2f"),
+                    "EU fair": st.column_config.NumberColumn(format="€%.2f"),
+                    "Modelled net exit": st.column_config.NumberColumn(format="€%.2f"),
+                    "Modelled net profit": st.column_config.NumberColumn(format="€%.2f"),
+                    "ROI %": st.column_config.NumberColumn(format="%.1f%%"),
+                },
+            )
+        else:
+            st.info("No routed cards to display.")
+
     with st.expander("Immutable forecasts · audit view"):
         st.caption(
             "Daily frozen forecasts used by the validation/experience-store layer. "
@@ -472,11 +650,21 @@ with tab_today:
         )
         if predictions:
             preferred = [
-                "id_product", "name", "expansion_name", "number", "route_signal",
-                "best_validated_buy_eur", "eu_fair_value_eur", "us_fair_value_eur",
-                "best_sell_channel", "best_sell_net_eur", "deal_score",
-                "eu_price_confidence_score", "eu_liquidity_score",
-                "exit_confidence_score", "bridge_opportunity_score",
+                "id_product",
+                "name",
+                "expansion_name",
+                "number",
+                "route_signal",
+                "best_validated_buy_eur",
+                "eu_fair_value_eur",
+                "us_fair_value_eur",
+                "best_sell_channel",
+                "best_sell_net_eur",
+                "deal_score",
+                "eu_price_confidence_score",
+                "eu_liquidity_score",
+                "exit_confidence_score",
+                "bridge_opportunity_score",
             ]
             available = set(predictions[0])
             cols = [c for c in preferred if c in available]
@@ -500,6 +688,9 @@ with tab_card:
         st.subheader(short_name(card.get("name")))
         st.caption(card_context(card))
 
+        matching_routes = [r for r in routes if str(r.get("id_product")) == str(pid)]
+        route = matching_routes[0] if matching_routes else card
+
         c1, c2, c3, c4 = st.columns(4)
         eu_fair = as_float(card.get("eu_fair_value_eur"))
         buy = as_float(card.get("best_validated_buy_eur"))
@@ -509,20 +700,39 @@ with tab_card:
         c3.metric("Deal score", f"{deal:.1f}" if deal is not None else "—")
         c4.metric("Route", signal_label(card.get("route_signal")))
 
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("EU PCS", card.get("eu_price_confidence_score") if card.get("eu_price_confidence_score") is not None else "—")
-        s2.metric("EU LQS", card.get("eu_liquidity_score") if card.get("eu_liquidity_score") is not None else "—")
-        s3.metric("ECS", card.get("exit_confidence_score") if card.get("exit_confidence_score") is not None else "—")
-        s4.metric("BOS", card.get("bridge_opportunity_score") if card.get("bridge_opportunity_score") is not None else "—")
+        st.markdown(f"**Exit route:** {human_channel(card.get('best_sell_channel'))}")
+        render_score_line(route)
 
-        matching_routes = [r for r in routes if str(r.get("id_product")) == str(pid)]
+        position = eu_position_text(route)
+        if position:
+            st.caption(position)
+
+        explanation = plain_gate_explanation(route)
+        if explanation:
+            st.markdown(f"**Decision explanation:** {explanation}")
+
         if matching_routes:
             st.subheader("Current route evidence")
-            st.dataframe(route_summary_rows(matching_routes), use_container_width=True, hide_index=True)
+            st.dataframe(
+                route_summary_rows(matching_routes),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Buy": st.column_config.NumberColumn(format="€%.2f"),
+                    "EU fair": st.column_config.NumberColumn(format="€%.2f"),
+                    "Modelled net exit": st.column_config.NumberColumn(format="€%.2f"),
+                    "Modelled net profit": st.column_config.NumberColumn(format="€%.2f"),
+                    "ROI %": st.column_config.NumberColumn(format="%.1f%%"),
+                },
+            )
             with st.expander("Raw route fields"):
                 st.dataframe(matching_routes, use_container_width=True, hide_index=True)
 
-        outcomes = latest_outcomes(conn, pid) if conn is not None else list(outcomes_by_card.get(str(pid)) or [])
+        outcomes = (
+            latest_outcomes(conn, pid)
+            if conn is not None
+            else list(outcomes_by_card.get(str(pid)) or [])
+        )
         st.subheader("Matured outcomes")
         if outcomes:
             st.dataframe(outcomes, use_container_width=True, hide_index=True)
@@ -553,13 +763,15 @@ with tab_health:
         st.info("No source_sync_state records found.")
 
     st.subheader("Dashboard architecture")
-    st.write({
-        "mode": data_mode,
-        "scanner_version": scanner_version,
-        "pricing_logic_in_ui": False,
-        "mutations_allowed": False,
-        "hosted_snapshot": "dashboard/data/dashboard_snapshot.json",
-    })
+    st.write(
+        {
+            "mode": data_mode,
+            "scanner_version": scanner_version,
+            "pricing_logic_in_ui": False,
+            "mutations_allowed": False,
+            "hosted_snapshot": "dashboard/data/dashboard_snapshot.json",
+        }
+    )
 
 if conn is not None:
     conn.close()
