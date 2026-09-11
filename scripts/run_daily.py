@@ -38,6 +38,7 @@ from deal_scanner.db import (
     upsert_products,
 )
 from deal_scanner.maintenance import compact_history
+from deal_scanner.mapping_audit import apply_cardtrader_mapping_guard
 from deal_scanner.market_observatory import generate_resale_candidates, run_ebay_observatory
 from deal_scanner.reports import generate_reports
 from deal_scanner.route_intelligence import apply_route_intelligence
@@ -135,6 +136,7 @@ def main() -> int:
     sourcing_csv = resolve_path(cfg, cfg["paths"]["cardmarket_sourcing_offers"])
     ebay_watchlist_csv = resolve_path(cfg, cfg["paths"]["ebay_watchlist"])
     ebay_sold_csv = resolve_path(cfg, cfg["paths"]["ebay_sold_evidence"])
+    mapping_override_csv = ROOT / "data" / "reference" / "cardtrader_mapping_overrides.csv"
     conn = connect(db_path)
 
     archive_dir = None if args.no_archive else raw_dir
@@ -202,6 +204,21 @@ def main() -> int:
             cardtrader_status = {"enabled": True, "mode": "live", "bootstrap": bootstrap_status, **sync_status}
         else:
             cardtrader_status = {"enabled": False, "reason": f"missing {cfg['cardtrader']['token_env']}"}
+
+    # Mapping-confidence guard: CardTrader blueprints can expose more than one
+    # Cardmarket idProduct. Before any route/price reports are generated, reset the
+    # current snapshot to the exact resolved ID and NULL any ambiguous/conflicting
+    # mapping. Ambiguous offers remain stored for diagnostics but cannot create a
+    # false CM->CT arbitrage signal. Human-reviewed resolutions live in the small
+    # cardtrader_mapping_overrides.csv registry.
+    ct_date = latest_cardtrader_snapshot_date(conn)
+    guard_snapshot = ct_date if ct_date == today_s else None
+    mapping_guard_status = apply_cardtrader_mapping_guard(
+        conn,
+        guard_snapshot,
+        mapping_override_csv,
+        output_dir / "cardtrader_mapping_audit.csv",
+    )
 
     generate_reports(conn, cfg, output_dir)
 
@@ -273,6 +290,7 @@ def main() -> int:
         "cardmarket_price_rows_skipped_stale": skipped_price_rows,
         "manual_cardmarket_en_nm_overrides_loaded": validated_count,
         "cardtrader": cardtrader_status,
+        "cardtrader_mapping_guard": mapping_guard_status,
         "cardmarket_sourcing": sourcing_status,
         "ebay_market_observatory": ebay_status,
         "resale_candidate_rows": resale_rows,
