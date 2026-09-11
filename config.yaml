@@ -1,4 +1,4 @@
-version: "0.8"
+version: "0.8.1"
 timezone: Europe/Dublin
 
 sources:
@@ -72,7 +72,7 @@ cardtrader:
   max_candidate_products: 400
   # In addition to cheap/popular discovery candidates, always bring a bounded
   # set of validated Cardmarket sourcing products into the CT marketplace sync so
-  # v0.8 can evaluate Cardmarket -> CardTrader exits on the same run.
+  # the route engine can evaluate Cardmarket -> CardTrader exits on the same run.
   resale_validated_product_limit: 250
   auto_bootstrap_if_empty: true
   marketplace_delay_seconds: 1.05
@@ -95,13 +95,51 @@ cardtrader_resale:
   # hub shipment from being silently treated as free. They are not platform fees.
   direct_operational_reserve_eur: 0.15
   zero_operational_reserve_eur: 0.50
+  # Fallback thresholds for any acquisition cost not covered by a price band.
   minimum_net_spread_eur: 2.00
   minimum_net_roi_pct: 25.0
+  # v0.8.1: capital/risk-sensitive gates. Higher-value cards need larger absolute
+  # profit even when percentage ROI still looks attractive.
+  price_bands:
+    - label: MICRO_0_10
+      max_acquisition_eur: 10
+      min_net_spread_eur: 2.50
+      min_net_roi_pct: 35.0
+    - label: LOW_10_30
+      max_acquisition_eur: 30
+      min_net_spread_eur: 5.00
+      min_net_roi_pct: 30.0
+    - label: MID_30_50
+      max_acquisition_eur: 50
+      min_net_spread_eur: 8.00
+      min_net_roi_pct: 25.0
+    - label: HIGH_50_100
+      max_acquisition_eur: 100
+      min_net_spread_eur: 15.00
+      min_net_roi_pct: 25.0
+    - label: PREMIUM_100_PLUS
+      max_acquisition_eur: null
+      min_net_spread_eur: 25.00
+      min_net_roi_pct: 20.0
+  # Above this acquisition cost an otherwise-valid edge is watch-only until a
+  # human checks photos/condition/variant and the exact exit route.
+  manual_verify_above_eur: 100.0
   # Used only when comparing CT net proceeds with the existing eBay exit route.
   ebay_exit_cost_pct: 8.0
   # Populate if the user's own CardTrader seller account later appears in the
   # marketplace feed; self-listings must never establish the competitive floor.
   excluded_seller_usernames: []
+
+core_watch:
+  # Dynamic liquid-card universe built from cards for which we already have
+  # validated sourcing and CT coverage. It is deliberately evidence-driven rather
+  # than a hard-coded list of famous Pokemon.
+  min_reference_value_eur: 15.0
+  max_reference_value_eur: 120.0
+  minimum_ct_sellers: 2
+  minimum_ct_units: 2
+  require_ebay_or_three_ct_sellers: true
+  max_rows: 100
 
 sourcing:
   required_language: en
@@ -109,7 +147,7 @@ sourcing:
   required_destination: Ireland
   seller_risk_max_penalty_eur: 1.50
   # Planning floor: median of the cheapest N eligible offers after filtering out
-  # very small seller histories. Individual low offers are still shown separately.
+  # very small seller histories. Individual low offers are still visible/actionable.
   robust_floor_sample_size: 3
   robust_floor_min_samples: 2
   robust_floor_min_seller_sales: 10
