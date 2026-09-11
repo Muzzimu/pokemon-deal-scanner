@@ -19,6 +19,7 @@ from deal_scanner.cardmarket import (
     read_catalog,
     read_price_guide,
 )
+from deal_scanner.cardmarket_live import validate_cardmarket_live
 from deal_scanner.cardtrader import CardTraderClient, blueprint_rows, expansion_id, expansion_name, normalize_marketplace, pokemon_expansions
 from deal_scanner.cardtrader_resale import generate_cardtrader_resale_reports
 from deal_scanner.config import load_config, resolve_path
@@ -242,6 +243,25 @@ def main() -> int:
         output_dir / "core_watch_universe.csv",
     )
 
+    # v0.8.2: only high-priority Core-watch candidates are eligible for an
+    # optional live Cardmarket offer check. The external provider never receives
+    # Cardmarket account credentials/cookies and its article prices cannot create
+    # a BUY without separate Ireland shipping/landed-cost evidence.
+    if args.demo:
+        cardmarket_live_status = {"enabled": False, "reason": "demo mode", "queried": 0, "rows": 0}
+    else:
+        live_cfg = cfg.get("cardmarket_live", {})
+        live_api_key = os.environ.get(str(live_cfg.get("api_key_env") or "PARSE_API_KEY"))
+        cardmarket_live_status = validate_cardmarket_live(
+            cfg,
+            output_dir / "core_watch_universe.csv",
+            output_dir / "cardmarket_live_validation.csv",
+            output_dir / "market_routes.csv",
+            output_dir / "cardtrader_resale_candidates.csv",
+            api_key=live_api_key,
+            today=today,
+        )
+
     maintenance_status = compact_history(conn, cfg, today=today)
 
     status_path = output_dir / "scanner_status.json"
@@ -258,6 +278,7 @@ def main() -> int:
         "resale_candidate_rows": resale_rows,
         "cardtrader_resale": ct_resale_status,
         "route_intelligence": route_intelligence_status,
+        "cardmarket_live_validation": cardmarket_live_status,
         "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
     })
