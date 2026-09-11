@@ -26,6 +26,7 @@ env:
   EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
   EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
   PARSE_API_KEY: ${{ secrets.PARSE_API_KEY }}
+  BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
 
 jobs:
   scan:
@@ -40,6 +41,9 @@ jobs:
           echo "day=$(TZ=Europe/Dublin date +%F)" >> "$GITHUB_OUTPUT"
           echo "hour=$(TZ=Europe/Dublin date +%H)" >> "$GITHUB_OUTPUT"
           echo "time=$(TZ=Europe/Dublin date +%H:%M:%S)" >> "$GITHUB_OUTPUT"
+          echo "weekday=$(TZ=Europe/Dublin date +%u)" >> "$GITHUB_OUTPUT"
+          echo "iso_week=$(TZ=Europe/Dublin date +%G-W%V)" >> "$GITHUB_OUTPUT"
+          echo "month=$(TZ=Europe/Dublin date +%Y-%m)" >> "$GITHUB_OUTPUT"
 
       - name: Restore today's successful-run marker
         id: daily_marker
@@ -120,6 +124,117 @@ jobs:
         with:
           path: db/pokemon_deal_scanner.sqlite
           key: pokemon-scanner-db-${{ github.run_id }}
+
+      - name: Durable weekly/monthly research backup
+        if: steps.timecheck.outputs.run == 'true' && env.BACKUP_REPO_TOKEN != '' && (github.event_name == 'workflow_dispatch' || steps.clock.outputs.weekday == '7')
+        continue-on-error: true
+        shell: bash
+        env:
+          BACKUP_REPO: Muzzimu/pokemon-deal-scanner-backup
+          BACKUP_DAY: ${{ steps.clock.outputs.day }}
+          BACKUP_WEEK: ${{ steps.clock.outputs.iso_week }}
+          BACKUP_MONTH: ${{ steps.clock.outputs.month }}
+        run: |
+          set -euo pipefail
+
+          # Force a clean SQLite checkpoint and verify integrity before copying it.
+          python - <<'PY'
+          import sqlite3
+          path = "db/pokemon_deal_scanner.sqlite"
+          conn = sqlite3.connect(path)
+          result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+          if result != "ok":
+              raise SystemExit(f"SQLite integrity_check failed: {result}")
+          conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+          conn.close()
+          print("SQLite integrity_check: ok")
+          PY
+
+          rm -rf .durable-backup-stage .durable-backup-repo
+          mkdir -p .durable-backup-stage/payload/db .durable-backup-stage/payload/output
+          cp db/pokemon_deal_scanner.sqlite .durable-backup-stage/payload/db/
+
+          # Preserve the research/model state most useful for audit and reconstruction.
+          for f in \
+            output/model_predictions.csv \
+            output/model_outcomes.csv \
+            output/model_calibration.csv \
+            output/model_validation_summary.json \
+            output/model_monthly_report.csv \
+            output/model_monthly_report.json \
+            output/market_quality.csv \
+            output/tcgcsv_market_reference.csv \
+            output/tcgcsv_mapping_audit.csv \
+            output/scanner_status.json; do
+            if [[ -f "$f" ]]; then
+              cp "$f" .durable-backup-stage/payload/output/
+            fi
+          done
+
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          db = Path(".durable-backup-stage/payload/db/pokemon_deal_scanner.sqlite")
+          manifest = {
+              "backup_schema": 1,
+              "backup_day_dublin": os.environ["BACKUP_DAY"],
+              "backup_iso_week": os.environ["BACKUP_WEEK"],
+              "backup_month": os.environ["BACKUP_MONTH"],
+              "source_repository": os.environ["GITHUB_REPOSITORY"],
+              "source_commit": os.environ["GITHUB_SHA"],
+              "source_run_id": os.environ["GITHUB_RUN_ID"],
+              "database_sha256": hashlib.sha256(db.read_bytes()).hexdigest(),
+          }
+          Path(".durable-backup-stage/payload/manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          tar -C .durable-backup-stage/payload -czf ".durable-backup-stage/${BACKUP_WEEK}.tar.gz" .
+
+          # Use a fine-grained token restricted to the private backup repository.
+          git config --global user.name "pokemon-deal-scanner-backup"
+          git config --global user.email "actions@users.noreply.github.com"
+          git config --global credential.helper store
+          printf 'https://x-access-token:%s@github.com\n' "$BACKUP_REPO_TOKEN" > "$HOME/.git-credentials"
+          trap 'rm -f "$HOME/.git-credentials"' EXIT
+
+          git clone "https://github.com/${BACKUP_REPO}.git" .durable-backup-repo || {
+            echo "Unable to clone backup repository"
+            exit 1
+          }
+          cd .durable-backup-repo
+
+          # An empty newly-created repository is supported as well.
+          git checkout -B main
+          mkdir -p weekly monthly
+          cp "${GITHUB_WORKSPACE}/.durable-backup-stage/${BACKUP_WEEK}.tar.gz" "weekly/${BACKUP_WEEK}.tar.gz"
+
+          # First successful weekly/manual backup of a month also becomes the durable monthly checkpoint.
+          if [[ ! -f "monthly/${BACKUP_MONTH}.tar.gz" ]]; then
+            cp "weekly/${BACKUP_WEEK}.tar.gz" "monthly/${BACKUP_MONTH}.tar.gz"
+          fi
+
+          cat > README.md <<'EOF'
+          # Pokémon Deal Scanner — durable research backups
+
+          Private durable backup target for `Muzzimu/pokemon-deal-scanner`.
+
+          - `weekly/YYYY-Www.tar.gz`: SQLite research database plus key model-validation outputs.
+          - `monthly/YYYY-MM.tar.gz`: first successful weekly/manual checkpoint retained for each month.
+          - Each archive contains `manifest.json` with source commit/run and a SHA-256 of the SQLite database.
+
+          The operational Actions cache is convenient but disposable; this repository is the long-term recovery layer for walk-forward T+1/T+3/T+7/T+14/T+30 and T+90/T+180 research history.
+          EOF
+
+          git add README.md weekly monthly
+          if git diff --cached --quiet; then
+            echo "Durable backup already current"
+            exit 0
+          fi
+          git commit -m "Backup ${BACKUP_DAY} (${BACKUP_WEEK}) from run ${GITHUB_RUN_ID}"
+          git push origin main
+          echo "Durable backup pushed to ${BACKUP_REPO}"
 
       - name: Upload daily reports
         if: steps.timecheck.outputs.run == 'true'
