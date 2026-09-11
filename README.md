@@ -1,10 +1,27 @@
-# Pokémon Deal Scanner v0.7
+# Pokémon Deal Scanner v0.8
 
 Python + SQLite scanner for Pokémon TCG sourcing, local deal discovery, resale evidence and small-scale arbitrage, tuned for an Ireland-based buyer.
 
-## What v0.7 adds
+## What v0.8 adds
 
-v0.7 adds **Gumtree UK / Northern Ireland discovery** and a conservative **cross-market arbitrage layer**.
+v0.8 formalizes the **source × role architecture** and turns CardTrader into an explicit **resale / exit channel**, not just an alternative supply source.
+
+- `docs/SOURCE_ROLE_MATRIX.md` defines which sites can be used for acquisition, valuation, resale, local/bundle context and discovery.
+- `data/reference/source_role_matrix.csv` is the machine-readable mirror of that policy.
+- Validated Cardmarket sourcing products are now pulled into the CardTrader marketplace sync even when they are not part of the original cheap/popular discovery candidate set.
+- CardTrader Direct and CardTrader Zero are evaluated separately as exit channels using current English/NM active marketplace offers.
+- CardTrader net proceeds subtract configurable seller commission, VAT on commission and small operating reserves before spread/ROI is calculated.
+- CardTrader active asks are **not** treated as confirmed sold prices. A `RESELL_TEST` requires minimum competing-seller depth; thinner markets are downgraded to `WATCH_ONLY`.
+- `output/cardtrader_resale_candidates.csv` shows Cardmarket -> CardTrader exit tests.
+- `output/market_routes.csv` answers, for cards with validated sourcing evidence: where the validated buy route is, what the current value references are, and which modeled exit channel produces the best net proceeds.
+- Existing eBay resale evidence is compared against CardTrader Direct/Zero on a net basis; the best modeled exit is surfaced rather than assuming one marketplace is always superior.
+- CardTrader exit edges are also merged into `output/arbitrage_candidates.csv` so cross-market opportunities appear in the existing arbitrage view.
+
+Current default CardTrader fee assumptions are the conservative post-March-2026 EU seller rates: 5.3% Direct and 7.3% Zero, with VAT added to commission. The Ireland-tuned configuration currently assumes 23% VAT. These are configurable planning assumptions, not tax advice.
+
+## v0.7 Gumtree and arbitrage layer
+
+v0.7 added **Gumtree UK / Northern Ireland discovery** and a conservative **cross-market arbitrage layer**.
 
 - Gumtree broad discovery covers Northern Ireland plus UK-wide results; Northern Ireland is classified separately because acquisition friction is lower.
 - Exact-card Gumtree watches are keyed to Cardmarket `id_product`. The first pilot cards are Dragonite V PGO 076/078 and Origin Forme Palkia VSTAR CRZ GG67.
@@ -16,12 +33,6 @@ v0.7 adds **Gumtree UK / Northern Ireland discovery** and a conservative **cross
 - Exit references prefer validated Cardmarket English/NM evidence and qualifying eBay evidence; weak asks cannot silently become sold-market evidence.
 - Arbitrage output uses net spread and ROI after an exit-cost reserve, with `STRONG_ARBITRAGE`, `POSSIBLE_ARBITRAGE`, verification states and `NO_EDGE`.
 - Gumtree fetch failure is non-destructive: it never implies a listing sold or disappeared.
-
-New outputs:
-
-- `output/gumtree_candidates.csv`
-- `output/arbitrage_candidates.csv`
-- `output/gumtree_arbitrage_status.json`
 
 ## v0.6 market-trend layer
 
@@ -43,8 +54,18 @@ Labels are `ACCELERATING`, `FIRMING`, `PULLBACK`, `COOLING`, `DECLINING`, `DIVER
 4. If the exact printing cannot be verified, use `VERIFY_VARIANT` / watch-only and request a close-up or collector number.
 5. Confirmed sold evidence outranks inferred quick-sale evidence; active asking prices remain weak context.
 6. Regional markets and currencies remain separate until an explicit FX conversion is performed.
+7. A higher CardTrader active price than Cardmarket does not by itself prove liquidity; v0.8 requires net economics plus competing-seller depth before a resale test becomes actionable.
 
-This prevents the two common false positives the project is designed around: a cheap non-English/low-condition Cardmarket listing being mistaken for an English/NM floor, and a visually similar vintage/variant card being priced as the wrong printing.
+This prevents the common false positives the project is designed around: a cheap non-English/low-condition Cardmarket listing being mistaken for an English/NM floor, a visually similar vintage/variant card being priced as the wrong printing, or a thin active marketplace ask being mistaken for a realized resale price.
+
+## Source roles
+
+The canonical policy lives in [`docs/SOURCE_ROLE_MATRIX.md`](docs/SOURCE_ROLE_MATRIX.md). In short:
+
+- **Buy:** Adverts/Gumtree/Cardmarket first; CardTrader is a secondary acquisition source.
+- **Value:** Cardmarket history + stronger eBay sold evidence; CardTrader active offers are supporting context.
+- **Sell:** eBay and CardTrader are modeled exit channels; Vinted/Adverts remain useful consumer/local channels for bundles and selected cards.
+- **Bundle/local market:** Adverts, Vinted and Facebook Marketplace are more useful than specialist single-card markets for pricing kid-focused bundles.
 
 ## Gumtree regions and arbitrage assumptions
 
@@ -63,7 +84,7 @@ Everything else is downgraded to verification, possible-arbitrage or no-edge sta
 
 ## Existing market evidence architecture
 
-The scanner retains the regional/evidence architecture from v0.4-v0.6:
+The scanner retains the regional/evidence architecture from v0.4-v0.7:
 
 - eBay Ireland, continental EU, UK and Global evidence kept separate;
 - physical item location required for regional eBay evidence;
@@ -71,6 +92,7 @@ The scanner retains the regional/evidence architecture from v0.4-v0.6:
 - repeated-miss requirement before an eBay listing can be marked gone;
 - inferred quick-sale evidence kept below confirmed sold evidence;
 - active eBay asks never represented as confirmed sales;
+- active CardTrader asks never represented as confirmed sales;
 - new-product flip guard;
 - bounded Cardmarket/CardTrader/eBay history retention.
 
@@ -92,6 +114,8 @@ DoneDeal remains manual additional Irish sourcing/asking-price context unless a 
 - `output/cardmarket_sourcing.csv`
 - `output/ebay_market_reference.csv`
 - `output/resale_candidates.csv`
+- `output/cardtrader_resale_candidates.csv`
+- `output/market_routes.csv`
 - `output/market_signals.csv`
 - `output/gumtree_candidates.csv`
 - `output/arbitrage_candidates.csv`
@@ -103,10 +127,10 @@ DoneDeal remains manual additional Irish sourcing/asking-price context unless a 
 
 Business strategy, standing interpretation rules, local Irish benchmark policy, bundle concepts, deal-evaluation conventions and conversation-continuity instructions are preserved in [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md).
 
-Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `docs/ADVERTS_DISCOVERY.md`, `docs/MARKET_EVIDENCE.md`, `docs/EBAY_API_COMPLIANCE.md`, `config.yaml`, relevant `data/reference/` files and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
+Before changing scanner behavior or interpreting a run in a new chat/session, review that file together with `docs/SOURCE_ROLE_MATRIX.md`, `docs/ADVERTS_DISCOVERY.md`, `docs/MARKET_EVIDENCE.md`, `docs/EBAY_API_COMPLIANCE.md`, `config.yaml`, relevant `data/reference/` files and recent commits. Material new decisions should be written back to GitHub rather than left only in conversation history.
 
 ## Workflow scheduling
 
 The production GitHub Actions workflow targets one full scan per Dublin calendar day once local time has reached **07:00**. Redundant UTC attempts cover Irish DST and GitHub scheduling delays; concurrency plus a daily-success marker prevent duplicate full scans. Manual workflow dispatch remains supported.
 
-The workflow runs tests first, then the normal scanner, market-trend signals, Gumtree discovery/arbitrage, and diagnostic checks. Gumtree is an external classifieds page rather than a formal API, so its step is intentionally defensive and reports retrieval failures rather than fabricating listing state.
+The workflow runs tests first, then the normal scanner, market-trend signals, Gumtree discovery/arbitrage, and diagnostic checks. `output/*.csv` and `output/*.json` are uploaded as the daily artifact, so the new CardTrader resale and market-route reports are included automatically.
