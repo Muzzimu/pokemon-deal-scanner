@@ -6,7 +6,7 @@ Last reviewed: 2026-09-11
 
 The scanner's largest Cardmarket data gap is not product identity or daily market pricing; Cardmarket already publishes those through its official downloadable product catalogue and price guide. The missing layer is **live offer-level data filtered to the exact printing, language, condition, seller and Ireland-eligible shipping context**.
 
-That live layer would materially improve Cardmarket -> CardTrader arbitrage because the scanner could verify a real English/NM acquisition price rather than rely on the generic Cardmarket low or manually maintained sourcing rows.
+That live layer materially improves Cardmarket -> CardTrader arbitrage because it can tell us whether a previously validated acquisition price still resembles the current English/NM article market. It still cannot prove landed cost unless Ireland shipping is known.
 
 ## Current baseline: official Cardmarket downloads
 
@@ -14,64 +14,67 @@ Keep the official product catalogue + daily price guide as the production baseli
 
 ## Official Cardmarket API
 
-Cardmarket still documents API v2, but its help page currently says it is **not accepting new applications for API access**. Existing API credentials must not be shared with third-party apps. Cardmarket's current GTC also restrict API data use and says presentation of cards/prices requires prior written agreement.
-
-For this project, the official API would be the preferred live-offer source if Cardmarket grants access/permission in future.
+Cardmarket still documents API v2, but its help page currently says it is **not accepting new applications for API access**. Existing API credentials must not be shared with third-party apps. For this project, the official API would be the preferred live-offer source if Cardmarket grants access/permission in future.
 
 ## Apify options
 
 There are two materially different kinds of Cardmarket actors on Apify:
 
-1. **Daily market-price actors** that mainly package Cardmarket's published catalogue/price-guide data. These add little value to this project because we already download the same official source directly for free.
-2. **Browser/residential-proxy actors** that load Cardmarket product pages and extract live offers. These can technically return useful live information, but they rely on browser automation, residential proxies and anti-bot handling. That is a much less stable and higher-risk production dependency.
+1. **Daily market-price actors** that mainly package Cardmarket's published catalogue/price-guide data. These add little value because the scanner already downloads the same official source directly for free.
+2. **Browser/residential-proxy actors** that load Cardmarket product pages and extract live offers. These can technically expose useful offer data, but they are a more fragile and higher-risk dependency because they operate against a site that actively deploys anti-automation controls.
 
-Do not add a residential-proxy / Cloudflare-evasion actor to the scheduled scanner merely because it works technically. Third-party infrastructure does not remove Cardmarket contractual/account risk, and a provider can break or disappear without warning.
+The project does not implement Cloudflare bypass, fingerprint spoofing, challenge solving, residential-proxy rotation or logged-in session harvesting. If an external provider exposes permitted public-data access behind a normal REST contract, the scanner may consume that provider without inheriting its internal scraping implementation.
 
 ## Parse.bot Cardmarket wrapper
 
-Parse.bot currently advertises an unofficial Cardmarket wrapper with endpoints for card details and live listings, including listing condition, price, quantity and pagination; it also advertises language/min-condition filters. Technically, this is much closer to the data the scanner actually needs than the daily Apify market-price actor.
+Parse.bot currently advertises an unofficial Cardmarket wrapper with `get_card_listings` and related endpoints. Its current documentation says the exact Cardmarket numeric `idProduct` can be used, and listing responses can be filtered by language and minimum condition. The wrapper is explicitly described as independent of Cardmarket rather than Cardmarket's official API.
 
-However, Parse.bot explicitly describes this as an **independent wrapper over Cardmarket public data**, not Cardmarket's official API. Before using it in production, confirm that the intended use is acceptable under both the provider's terms and Cardmarket's current terms/permissions.
+### v0.8.2 implementation
 
-## Recommended integration policy
+The repository now contains `src/deal_scanner/cardmarket_live.py`, a **feature-flagged, low-volume validation layer**. The current provider implementation calls Parse.bot's public REST wrapper when `PARSE_API_KEY` is present.
 
-If a permitted live-offer source becomes available, integrate it behind a provider-neutral interface rather than coupling the scanner to one scraper vendor. Minimum fields:
+The validator deliberately does not:
+
+- send Cardmarket login credentials or cookies;
+- scrape Cardmarket directly;
+- rotate proxies or evade Cloudflare itself;
+- interpret a live article price as Ireland-landed cost;
+- create a new automatic BUY signal from a cheaper live article alone.
+
+It only checks high-priority rows already present in `output/core_watch_universe.csv`, currently priorities A/B with a minimum CT-lag score. The default cap is 20 cards per daily run and the request delay is conservative enough for Parse's currently advertised free-tier 5 requests/minute limit.
+
+Output: `output/cardmarket_live_validation.csv`.
+
+For each checked exact Cardmarket product, the file records the live article floor, a robust median of the cheapest configured sample, visible seller/unit depth, comparison with the previously validated landed source, and a validation state:
+
+- `LIVE_ALIGNED` — current live article evidence is broadly consistent with the previous validated landed source;
+- `LIVE_CHEAPER_VERIFY_SHIPPING` — a cheaper article may exist, but shipping/landed cost still needs verification;
+- `REVALIDATE_STALE_SOURCE` — current live article evidence has moved materially above the prior source, so actionable CM->CT routes are downgraded pending revalidation;
+- `INSUFFICIENT_LIVE_DEPTH` / `NO_LIVE_OFFERS` — not enough evidence.
+
+When the live evidence indicates a stale acquisition source, `market_routes.csv` is changed from `RESELL_TEST`/`WATCH_ONLY` to `REVALIDATE_SOURCE`, and a CardTrader resale candidate is downgraded from `RESELL_TEST` to `WATCH_ONLY`. A lower live article price never upgrades a route automatically.
+
+## Provider-neutral policy
+
+The validation logic is deliberately separate from the provider client. A different permitted live-offer service can replace Parse later while preserving the normalized output and guardrails. Minimum useful fields remain:
 
 - Cardmarket `id_product` / exact product identity;
-- exact printing / version;
-- language;
-- condition;
+- language and condition;
 - article price;
-- seller country;
-- seller rating / sales count when permitted;
+- seller identity/country where permitted;
 - quantity;
-- Ireland shipping eligibility and shipping cost when available;
-- checked timestamp and source/provider label.
+- Ireland shipping eligibility and cost when available;
+- checked timestamp and provider label.
 
-The existing `cardmarket_sourcing_offers.csv` schema and robust-floor logic should remain the normalization layer. A live provider should feed that layer rather than bypassing it.
+A future provider that supplies reliable Ireland shipping can feed the existing sourcing/robust-floor layer; until then, live provider data stays verification evidence rather than landed acquisition evidence.
 
-## Safe pilot if permission/terms are confirmed
+## Operational rule
 
-Start with an **on-demand, low-volume exact-card validator**, not a whole-site crawler:
+Use the official Cardmarket feed to screen the whole catalogue, CardTrader/eBay to identify plausible cross-market gaps, and only then spend live-provider requests on the highest-priority exact products. This keeps cost, traffic and false positives bounded.
 
-- only cards already flagged by the CM/CT gap engine;
-- exact product pages only;
-- English + NM filters;
-- no logged-in Cardmarket cookies or account credentials supplied to the scraping provider;
-- cache results and avoid repeated requests within the same day;
-- do not store unnecessary seller personal data;
-- stop/degrade gracefully on blocks or provider errors;
-- compare a sample against manual Cardmarket pages before allowing the data to create BUY signals.
-
-A successful pilot should first produce `VERIFY_LIVE_CM` / `VALIDATED_LIVE_CM` evidence. It should not immediately trigger unattended purchases.
-
-## Current decision
-
-**Do not integrate Apify/Parse/proxy scraping into the scheduled production scanner yet.** The daily price-guide actors are redundant, while the live-offer wrappers are technically useful but need a clearer permission/terms basis before becoming a dependency. The architecture should remain ready to accept a permitted live-offer provider later.
-
-Official references reviewed on 2026-09-11:
+Official/provider references reviewed on 2026-09-11:
 
 - Cardmarket API help: https://help.cardmarket.com/en/cardmarket-api
-- Cardmarket GTC / API use: https://www.cardmarket.com/en/Policies/GeneralTermsAndConditions/IT
+- Cardmarket GTC: https://www.cardmarket.com/en/FoW/Policies/GeneralTermsAndConditions
 - Cardmarket public price-guide/catalogue announcement: https://news.cardmarket.com/en/Magic/were-making-the-price-guide-and-product-catalogue-available-for-download
-- Cardmarket partner apps/services: https://help.cardmarket.com/en/api-partnerships
+- Parse.bot Cardmarket wrapper: https://parse.bot/marketplace/d6eff58a-dd95-45bc-886b-f1cd346d961c/cardmarket-com-api
