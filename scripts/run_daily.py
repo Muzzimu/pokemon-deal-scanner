@@ -39,6 +39,7 @@ from deal_scanner.db import (
 from deal_scanner.maintenance import compact_history
 from deal_scanner.market_observatory import generate_resale_candidates, run_ebay_observatory
 from deal_scanner.reports import generate_reports
+from deal_scanner.route_intelligence import apply_route_intelligence
 from deal_scanner.sourcing import generate_cardmarket_sourcing_report
 
 
@@ -80,9 +81,9 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
         max_rows=int(cfg["cardtrader"]["max_candidate_products"]),
     )
 
-    # v0.8: validated Cardmarket sourcing products are also CardTrader exit
-    # candidates. Include a bounded set even when they are not cheap/popular enough
-    # for the original CardTrader discovery query.
+    # Validated Cardmarket sourcing products are also CardTrader exit candidates.
+    # Include a bounded set even when they are not cheap/popular enough for the
+    # original CardTrader discovery query.
     resale_limit = int(cfg.get("cardtrader", {}).get("resale_validated_product_limit", 250))
     validated_rows = conn.execute(
         """SELECT id_product FROM cardmarket_en_nm_overrides
@@ -233,6 +234,14 @@ def main() -> int:
         output_dir / "market_routes.csv",
     )
 
+    route_intelligence_status = apply_route_intelligence(
+        cfg,
+        output_dir / "cardtrader_resale_candidates.csv",
+        output_dir / "market_routes.csv",
+        output_dir / "resale_candidates.csv",
+        output_dir / "core_watch_universe.csv",
+    )
+
     maintenance_status = compact_history(conn, cfg, today=today)
 
     status_path = output_dir / "scanner_status.json"
@@ -248,6 +257,7 @@ def main() -> int:
         "ebay_market_observatory": ebay_status,
         "resale_candidate_rows": resale_rows,
         "cardtrader_resale": ct_resale_status,
+        "route_intelligence": route_intelligence_status,
         "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
     })
