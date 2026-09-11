@@ -1,4 +1,4 @@
-version: "0.5"
+version: "0.6"
 timezone: Europe/Dublin
 
 sources:
@@ -14,6 +14,7 @@ paths:
   cardmarket_sourcing_offers: data/reference/cardmarket_sourcing_offers.csv
   ebay_watchlist: data/reference/ebay_watchlist.csv
   ebay_sold_evidence: data/reference/ebay_sold_evidence.csv
+  market_events: data/reference/market_events.csv
 
 catalog:
   refresh_weekday: 4
@@ -205,6 +206,18 @@ ebay:
 resale:
   minimum_gross_spread_eur: 2.00
   minimum_gross_roi_pct: 25.0
+
+market_signals:
+  # Uses Cardmarket price history plus the existing eBay observatory. Available
+  # supply is the count of exact matched raw eBay listings, not Cardmarket's total
+  # offer count. The first 30 days therefore build a baseline before supply and
+  # cross-market trend confidence can become HIGH.
+  event_lookback_days: 30
+  neutral_price_move_pct: 3.0
+  strong_price_move_pct: 10.0
+  velocity_acceleration_ratio: 1.50
+  velocity_cooling_ratio: 0.67
+  meaningful_supply_change_pct: 10.0
 
 history_retention:
   # Inspired by mature collection trackers: keep detail where it matters without
