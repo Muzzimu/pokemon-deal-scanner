@@ -125,7 +125,7 @@ jobs:
           path: |
             output/*.csv
             output/*.json
-          retention-days: 30
+          retention-days: 90
 
       - name: Create today's success marker
         if: success() && github.event_name == 'schedule' && steps.timecheck.outputs.run == 'true'
