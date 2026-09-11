@@ -41,6 +41,7 @@ from deal_scanner.maintenance import compact_history
 from deal_scanner.mapping_audit import apply_cardtrader_mapping_guard
 from deal_scanner.market_observatory import generate_resale_candidates, run_ebay_observatory
 from deal_scanner.market_quality import apply_market_quality
+from deal_scanner.model_validation import run_model_validation
 from deal_scanner.reports import generate_reports
 from deal_scanner.route_intelligence import apply_route_intelligence
 from deal_scanner.sourcing import generate_cardmarket_sourcing_report
@@ -134,6 +135,7 @@ def main() -> int:
     sourcing_csv = resolve_path(cfg, cfg["paths"]["cardmarket_sourcing_offers"])
     ebay_watchlist_csv = resolve_path(cfg, cfg["paths"]["ebay_watchlist"])
     ebay_sold_csv = resolve_path(cfg, cfg["paths"]["ebay_sold_evidence"])
+    realised_sales_csv = resolve_path(cfg, cfg["paths"].get("realised_sales", "data/reference/realised_sales.csv"))
     tcgplayer_reference_csv = resolve_path(cfg, cfg["paths"]["tcgplayer_market_reference"])
     mapping_override_csv = ROOT / "data" / "reference" / "cardtrader_mapping_overrides.csv"
     conn = connect(db_path)
@@ -265,9 +267,7 @@ def main() -> int:
             today=today,
         )
 
-    # v0.9: financial-market-style quality model. TCGplayer is supporting market
-    # confirmation only; it can raise/lower fair-value confidence and exit confidence
-    # but never creates a BUY or becomes an exit route by itself.
+    # v0.10+: segmented EU / US / CardTrader-bridge market-quality model.
     market_quality_status = apply_market_quality(
         cfg,
         output_dir / "market_routes.csv",
@@ -277,6 +277,21 @@ def main() -> int:
         output_dir / "cardtrader_mapping_audit.csv",
         output_dir / "core_watch_universe.csv",
         output_dir / "market_quality.csv",
+        today=today,
+    )
+
+    # v0.11: immutable daily forecasts + walk-forward outcomes. The first successful
+    # snapshot in each ISO week is the non-overlapping benchmark cohort. Daily rolling
+    # snapshots are retained for research. 1-30d calibrate fair value; 90/180d are
+    # holding diagnostics and never automatically reweight the short-horizon model.
+    model_validation_status = run_model_validation(
+        conn,
+        cfg,
+        output_dir / "market_routes.csv",
+        tcgplayer_reference_csv,
+        ebay_sold_csv,
+        realised_sales_csv,
+        output_dir,
         today=today,
     )
 
@@ -299,6 +314,7 @@ def main() -> int:
         "route_intelligence": route_intelligence_status,
         "cardmarket_live_validation": cardmarket_live_status,
         "market_quality": market_quality_status,
+        "model_validation": model_validation_status,
         "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
     })
