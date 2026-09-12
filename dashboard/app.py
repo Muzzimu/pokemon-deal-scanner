@@ -4,6 +4,7 @@ import csv
 import json
 import re
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -122,6 +123,18 @@ def clean_text(value) -> str | None:
         return None
     text = str(value).strip()
     return None if not text or text.lower() in {"none", "nan", "null"} else text
+
+
+def compact_timestamp(value) -> str:
+    text = clean_text(value) or "unknown"
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    if "T" not in text:
+        return parsed.strftime("%d %b %Y").lstrip("0")
+    suffix = " UTC" if text.endswith("+00:00") or text.endswith("Z") else ""
+    return parsed.strftime("%d %b %Y · %H:%M").lstrip("0") + suffix
 
 
 def format_eur(value) -> str:
@@ -796,6 +809,67 @@ def render_tracked_card(row: dict) -> None:
 
 
 st.set_page_config(page_title="Pokémon Deal Scanner", page_icon="🃏", layout="wide")
+st.markdown(
+    """
+    <style>
+    [data-testid="stAppViewContainer"] .main .block-container {
+        padding-top: 1.05rem;
+    }
+    .scanner-header {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.25rem 0.9rem;
+        margin: 0 0 0.15rem 0;
+    }
+    .scanner-title {
+        font-size: 2rem;
+        font-weight: 720;
+        line-height: 1.1;
+        letter-spacing: -0.025em;
+    }
+    .scanner-meta {
+        font-size: 0.80rem;
+        line-height: 1.25;
+        color: rgba(127, 127, 127, 0.95);
+    }
+    .market-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.42rem;
+        margin: 0.45rem 0 0.7rem 0;
+    }
+    .market-date {
+        font-size: 1.08rem;
+        font-weight: 650;
+        margin-right: 0.15rem;
+    }
+    .kpi-chip {
+        border: 1px solid rgba(127, 127, 127, 0.35);
+        background: rgba(127, 127, 127, 0.08);
+        border-radius: 999px;
+        padding: 0.16rem 0.52rem;
+        font-size: 0.82rem;
+        line-height: 1.35;
+        white-space: nowrap;
+    }
+    .kpi-chip strong { font-weight: 700; }
+    .info-dot {
+        color: rgba(127, 127, 127, 0.95);
+        cursor: help;
+        font-size: 0.92rem;
+        padding-left: 0.1rem;
+    }
+    @media (max-width: 700px) {
+        .scanner-title { font-size: 1.65rem; }
+        .scanner-meta { width: 100%; }
+        .market-date { width: 100%; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 cfg = load_cfg()
 db_path = resolve_path(cfg, cfg["paths"]["database"])
 output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
@@ -851,9 +925,16 @@ tracked = enriched_tracked
 for key in ("t7", "t7_cards", "t30", "t30_cards"):
     maturity[key] = int(maturity.get(key) or 0)
 
-st.title("Pokémon Deal Scanner")
-st.caption(f"v{scanner_version} · read-only decision dashboard · scanner rules remain authoritative")
-st.caption(f"Data mode: **{data_mode}** · Updated: **{data_updated}**")
+compact_mode = "Hosted snapshot" if data_mode == "Hosted public snapshot" else data_mode
+st.markdown(
+    f"""
+    <div class="scanner-header">
+      <div class="scanner-title">Pokémon Deal Scanner</div>
+      <div class="scanner-meta">v{scanner_version} · {compact_mode} · Updated {compact_timestamp(data_updated)} · read-only</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 tab_today, tab_card, tab_health = st.tabs(["Today", "Card detail", "Model health"])
 
@@ -863,15 +944,21 @@ with tab_today:
     watch_count = sum(s in WATCH_SIGNALS for s in route_signals)
     needs_count = sum(s in NEEDS_EVIDENCE_SIGNALS for s in route_signals)
     latest_date = predictions[0].get("snapshot_date", "—") if predictions else "—"
-    st.markdown(f"### {latest_date} market review")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Resell tests", resell_count)
-    c2.metric("Watch", watch_count)
-    c3.metric("Needs evidence", needs_count)
-    c4.metric("Discovery queue", len(discovery))
-    st.caption("Market-profile diagnostics explain the evidence; they do not create new BUY rules or alter v0.12 route signals.")
+    review_date = compact_timestamp(latest_date).split(" · ", 1)[0]
+    st.markdown(
+        f"""
+        <div class="market-strip">
+          <span class="market-date">{review_date} market review</span>
+          <span class="kpi-chip">🟢 Resell <strong>{resell_count}</strong></span>
+          <span class="kpi-chip">🟡 Watch <strong>{watch_count}</strong></span>
+          <span class="kpi-chip">🔵 Needs data <strong>{needs_count}</strong></span>
+          <span class="kpi-chip">🔎 Discovery <strong>{len(discovery)}</strong></span>
+          <span class="info-dot" title="Market-profile diagnostics explain evidence only; they do not create BUY rules or alter v0.12 route signals.">ⓘ</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    st.divider()
     st.subheader("Priority review")
     non_edge_signals = sorted({s for s in route_signals if s and s != "NO_EDGE"})
     f0, f1, f2, f3 = st.columns([2, 2, 2, 3])

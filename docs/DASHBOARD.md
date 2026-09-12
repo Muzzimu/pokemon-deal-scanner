@@ -22,6 +22,7 @@ Core rules:
 6. **Do not confuse asks with exits.** Active Cardmarket/CardTrader asks are competitive-market references, not realised sale prices. Gross room to an ask is not profit.
 7. **No fabricated precision.** If finish, language, condition, shipping, route or exit evidence is unresolved, display the missing state instead of filling it with a proxy.
 8. **Artwork follows exact identity.** Small card images may be shown only from an explicit Cardmarket-product → TCGdex mapping. Never fuzzy-match artwork in the UI; if the mapping is missing, show no image.
+9. **Keep orientation chrome compact.** Version, freshness and review counters should use minimal vertical space so the first actionable review content appears quickly; governance detail can move to tooltips or progressive disclosure.
 
 ## Data modes
 
