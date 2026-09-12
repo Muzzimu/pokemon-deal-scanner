@@ -5,6 +5,10 @@ on:
   push:
     paths:
       - '.github/workflows/cross_price_research_preview.yml'
+      - 'src/deal_scanner/cross_price.py'
+      - 'src/deal_scanner/reports.py'
+      - 'scripts/enrich_cross_price_cardtrader.py'
+      - 'scripts/apply_cross_price_to_dashboard.py'
 
 permissions:
   contents: write
@@ -55,7 +59,7 @@ jobs:
           for band in sorted(set(r['reference_band'] for r in rows)):
               print('\n', band)
               for r in [x for x in rows if x['reference_band'] == band][:5]:
-                  print(r['name'], r['screening_acquisition_eur'], r['reference_value_eur'], r['gross_headroom_eur'], r['acquisition_basis'])
+                  print(r['name'], r['screening_acquisition_eur'], r.get('screening_acquisition_source'), r['reference_value_eur'], r['gross_headroom_eur'], r['acquisition_basis'], r.get('expansion_name'), r.get('number'))
           PY
 
       - name: Publish preview and dashboard data
