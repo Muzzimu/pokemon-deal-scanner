@@ -1,6 +1,6 @@
 {
-  "source": "TCGdex",
-  "source_note": "Exact Cardmarket-product mappings. Dashboard uses TCGdex low/high WebP assets; no card artwork binaries are stored in this repository.",
+  "source": "TCGdex with verified Pokémon TCG image fallback",
+  "source_note": "Exact Cardmarket-product mappings. TCGdex remains the default image source; verified pokemontcg.io image URLs are used where hosted Streamlit rendering is unreliable. No card artwork binaries are stored in this repository.",
   "cards": {
     "665676": {"tcgdex_id": "swsh10.5-050", "image_base": "https://assets.tcgdex.net/en/swsh/swsh10.5/050", "verified_name": "Dragonite VSTAR", "set_name": "Pokémon GO", "number": "050/078"},
     "665687": {"tcgdex_id": "swsh10.5-076", "image_base": "https://assets.tcgdex.net/en/swsh/swsh10.5/076", "verified_name": "Dragonite V", "set_name": "Pokémon GO", "number": "076/078"},
@@ -12,9 +12,9 @@
     "682075": {"tcgdex_id": "swsh12-033", "image_base": "https://assets.tcgdex.net/en/swsh/swsh12/033", "verified_name": "Alolan Vulpix V", "set_name": "Silver Tempest", "number": "033/195"},
     "682076": {"tcgdex_id": "swsh12-034", "image_base": "https://assets.tcgdex.net/en/swsh/swsh12/034", "verified_name": "Alolan Vulpix VSTAR", "set_name": "Silver Tempest", "number": "034/195"},
     "582085": {"tcgdex_id": "swsh8-023", "image_base": "https://assets.tcgdex.net/en/swsh/swsh8/023", "verified_name": "Rillaboom VMAX", "set_name": "Fusion Strike", "number": "023/264"},
-    "873710": {"tcgdex_id": "mep-033", "image_base": "https://assets.tcgdex.net/en/me/mep/033", "verified_name": "Mega Lucario ex", "set_name": "MEP Black Star Promos", "number": "MEP 033"},
+    "873710": {"tcgdex_id": "mep-033", "image_base": "https://images.pokemontcg.io/mep/033.png?asset=", "verified_name": "Mega Lucario ex", "set_name": "MEP Black Star Promos", "number": "MEP 033"},
     "869855": {"tcgdex_id": "me02.5-244", "image_base": "https://assets.tcgdex.net/en/me/me02.5/244", "verified_name": "Cynthia's Spiritomb", "set_name": "Ascended Heroes", "number": "244/217"},
     "869763": {"tcgdex_id": "me02.5-152", "image_base": "https://assets.tcgdex.net/en/me/me02.5/152", "verified_name": "Mega Dragonite ex", "set_name": "Ascended Heroes", "number": "152/217"},
-    "691947": {"tcgdex_id": "swsh12.5gg-GG67", "image_base": "https://assets.tcgdex.net/en/swsh/swsh12.5gg/GG67", "verified_name": "Origin Forme Palkia VSTAR", "set_name": "Crown Zenith Galarian Gallery", "number": "GG67/GG70"}
+    "691947": {"tcgdex_id": "swsh12.5gg-GG67", "image_base": "https://images.pokemontcg.io/swsh12pt5gg/GG67.png?asset=", "verified_name": "Origin Forme Palkia VSTAR", "set_name": "Crown Zenith Galarian Gallery", "number": "GG67/GG70"}
   }
 }
