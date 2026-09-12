@@ -45,6 +45,33 @@ def compact_basis(value: str | None) -> str:
     return value.replace("_", " ").title() if value else "Unknown"
 
 
+def historical_reference_quality(row: dict) -> dict:
+    """Measure consistency among product-level Cardmarket summary marks.
+
+    This is deliberately a diagnostic, not a claim that Cardmarket historical sales
+    are condition/language/finish-clean.
+    """
+    values = [
+        as_float(row.get("trend")),
+        as_float(row.get("avg1")),
+        as_float(row.get("avg7")),
+        as_float(row.get("avg30")),
+    ]
+    values = [value for value in values if value is not None and value > 0]
+    if len(values) < 3:
+        return {"quality": "INSUFFICIENT", "label": "⚪ Insufficient", "spread_ratio": None}
+    low = min(values)
+    high = max(values)
+    ratio = high / low if low > 0 else None
+    if ratio is None:
+        return {"quality": "INSUFFICIENT", "label": "⚪ Insufficient", "spread_ratio": None}
+    if ratio >= 2.0:
+        return {"quality": "LOW", "label": "🔴 Low", "spread_ratio": ratio}
+    if ratio >= 1.35:
+        return {"quality": "MEDIUM", "label": "🟠 Medium", "spread_ratio": ratio}
+    return {"quality": "HIGH", "label": "🟢 High", "spread_ratio": ratio}
+
+
 st.set_page_config(page_title="Cross-price research", page_icon="⚖️", layout="wide")
 
 path = LOCAL_PATH if LOCAL_PATH.exists() else HOSTED_PATH
@@ -53,7 +80,7 @@ rows = read_csv(path)
 st.title("Cross-price research")
 st.caption("Research-only comparison across value bands. This page does not create or change BUY signals, fair values, route gates, or v0.12 scoring.")
 st.warning(
-    "Cardmarket 30-day average is used only as a diagnostic reference. Rows labelled 'Generic CM low — screen only' do not have validated English/NM acquisition economics yet, so their headroom is a screening estimate, not executable profit."
+    "Cardmarket 30-day average is a diagnostic reference, not an executable exit. The new historical-confidence field only measures agreement among Cardmarket Trend/1d/7d/30d summary marks; it does not make the underlying history English/NM or condition-clean."
 )
 
 if not rows:
@@ -62,12 +89,13 @@ if not rows:
 
 bands = list(dict.fromkeys(str(row.get("reference_band") or "UNKNOWN") for row in rows))
 validated_count = sum(str(row.get("acquisition_basis") or "") == "VALIDATED_EN_NM" for row in rows)
+low_history_count = sum(historical_reference_quality(row)["quality"] == "LOW" for row in rows)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Research candidates", len(rows))
 c2.metric("Reference bands", len(bands))
 c3.metric("Validated EN/NM acquisition", validated_count)
-c4.metric("Needs acquisition validation", len(rows) - validated_count)
+c4.metric("Low-confidence historical refs", low_history_count)
 
 summary_groups: dict[str, list[dict]] = defaultdict(list)
 for row in rows:
@@ -83,6 +111,7 @@ for band in bands:
             "Reference band": band,
             "Candidates": len(group),
             "Validated EN/NM": sum(str(row.get("acquisition_basis") or "") == "VALIDATED_EN_NM" for row in group),
+            "Low hist. confidence": sum(historical_reference_quality(row)["quality"] == "LOW" for row in group),
             "Median screening headroom": median(headrooms) if headrooms else None,
             "Max screening headroom": max(headrooms) if headrooms else None,
         }
@@ -101,10 +130,11 @@ st.dataframe(
 
 st.divider()
 st.subheader("Candidate comparison")
-f1, f2, f3 = st.columns([2, 2, 3])
+f1, f2, f3, f4 = st.columns([2, 2, 2, 3])
 selected_bands = f1.multiselect("Reference bands", bands, default=bands)
 evidence_filter = f2.selectbox("Acquisition evidence", ["All", "Validated EN/NM", "Needs validation"])
-search_text = f3.text_input("Find card", placeholder="e.g. Pikachu, Charizard, Dragonite").strip().lower()
+history_filter = f3.selectbox("Historical ref confidence", ["All", "High", "Medium", "Low", "Insufficient"])
+search_text = f4.text_input("Find card", placeholder="e.g. Pikachu, Charizard, Dragonite").strip().lower()
 
 view = []
 for row in rows:
@@ -116,12 +146,16 @@ for row in rows:
         continue
     if evidence_filter == "Needs validation" and validated:
         continue
+    hist = historical_reference_quality(row)
+    if history_filter != "All" and hist["quality"] != history_filter.upper():
+        continue
     if search_text and search_text not in str(row.get("name") or "").lower():
         continue
     view.append(row)
 
 comparison = []
 for row in view:
+    hist = historical_reference_quality(row)
     comparison.append(
         {
             "Card": short_name(row.get("name")),
@@ -132,6 +166,8 @@ for row in view:
             "Buy source": str(row.get("screening_acquisition_source") or "UNKNOWN").replace("_", " "),
             "Acquisition evidence": compact_basis(row.get("acquisition_basis")),
             "30d reference": as_float(row.get("reference_value_eur")),
+            "Hist. ref confidence": hist["label"],
+            "History spread ×": hist["spread_ratio"],
             "Screening headroom": as_float(row.get("gross_headroom_eur")),
             "Friction budget": as_float(row.get("friction_budget_eur")),
             "Gap %": as_float(row.get("cross_price_gap_pct")),
@@ -147,6 +183,7 @@ st.dataframe(
     column_config={
         "Screening acquisition": st.column_config.NumberColumn(format="€%.2f"),
         "30d reference": st.column_config.NumberColumn(format="€%.2f"),
+        "History spread ×": st.column_config.NumberColumn(format="%.2fx"),
         "Screening headroom": st.column_config.NumberColumn(format="€%.2f"),
         "Friction budget": st.column_config.NumberColumn(format="€%.2f"),
         "Gap %": st.column_config.NumberColumn(format="%.1f%%"),
@@ -155,7 +192,7 @@ st.dataframe(
 )
 
 st.caption(
-    "Friction budget is the gross screening headroom available before acquisition shipping, platform fees, seller shipping, packaging, FX and execution loss reduce contribution to zero. It is not a profit forecast."
+    "Friction budget is gross screening headroom before acquisition shipping, platform fees, seller shipping, packaging, FX and execution loss. Historical confidence is a summary-consistency diagnostic only."
 )
 
 with st.expander("Method and guardrails"):
@@ -163,6 +200,8 @@ with st.expander("Method and guardrails"):
         """
 - The panel samples up to **15 cards per reference-value band**: €0–10, €10–30, €30–50, €50–100 and €100+.
 - Bands use **Cardmarket 30-day average** as a diagnostic reference, not an executable exit price.
+- **Historical reference confidence** compares positive Cardmarket Trend/1d/7d/30d marks. Fewer than three = insufficient; max/min ≥2.0× = low; ≥1.35× = medium; otherwise high.
+- This confidence label says only whether those product-level summary marks agree. It does **not** prove the historical sales were English, NM, the same finish, or otherwise directly comparable.
 - Within each band, validated English/NM acquisition evidence is ranked ahead of generic Cardmarket-low screening rows.
 - Generic Cardmarket low remains discovery-only because it can reflect another language or condition.
 - Absolute euro headroom and percentage gap are shown together so cheap cards do not dominate solely through percentage moves.
