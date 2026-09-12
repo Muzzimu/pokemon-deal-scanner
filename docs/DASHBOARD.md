@@ -8,6 +8,20 @@ Make the existing scanner easier to inspect without moving pricing, identity, so
 
 The dashboard is a display layer only. `main`, SQLite, deterministic Python, and the existing scanner outputs remain authoritative.
 
+## UX design contract
+
+The dashboard follows a decision-first UX hierarchy informed by the project UX references (Interaction Design Foundation, Qt UX guidance, and Michael Filipiuk's UI-design principles). These references guide presentation only; they never change scanner logic, evidence roles, fair value, or BUY gates.
+
+Core rules:
+
+1. **User task before model internals.** For an owned card, show exact identity, what was paid, landed cost, current comparable market asks, modelled exit/profit when available, and only then model diagnostics.
+2. **Progressive disclosure.** PCS/LQS/ECS/BOS, raw route fields, market diagnostics and audit data remain available but normally sit behind expanders.
+3. **Exact identity is always visible.** Card name alone is insufficient; show set, collector number, Cardmarket ID and relevant language/condition/finish context.
+4. **Consistency across cards.** Owned-card, routed-card and detail views should use the same labels, value hierarchy and terminology wherever the evidence is equivalent.
+5. **Findability over density.** Search, review-set selection and clear stage labels should make cards easy to locate without flattening every data point onto the first screen.
+6. **Do not confuse asks with exits.** Active Cardmarket/CardTrader asks are competitive-market references, not realised sale prices. Gross room to an ask is not profit.
+7. **No fabricated precision.** If finish, language, condition, shipping, route or exit evidence is unresolved, display the missing state instead of filling it with a proxy.
+
 ## Data modes
 
 ### Local mode
@@ -22,7 +36,9 @@ If the SQLite database is absent, the dashboard reads:
 
 The daily GitHub Action generates this snapshot after a successful scanner run and attempts to commit only that whitelisted file back to `main`. The publish step is non-critical: if it fails, the scanner remains successful and the hosted page simply keeps the previous snapshot.
 
-The hosted snapshot contains market/model fields only. It intentionally excludes secrets, personal inventory, seller-level data, API tokens and mutable scanner state.
+The hosted snapshot contains scanner market/model fields plus the explicitly user-approved owned/tracked-card decision dataset. It still excludes API secrets, seller identities, addresses and scanner credentials.
+
+`dashboard/data/owned_market.json` is refreshed independently from the main scanner so current owned-card ask checks cannot hold the core daily scan hostage. It contains public-safe per-card acquisition economics and comparable-market summaries only; raw seller identities and secrets are not exported.
 
 Snapshot schema v3 adds market-profile diagnostics to routed cards by joining existing `market_signals.csv` and `market_quality.csv` evidence. These fields explain current market state; they do not recalculate fair value, scores or route decisions.
 
@@ -30,16 +46,16 @@ Snapshot schema v3 adds market-profile diagnostics to routed cards by joining ex
 
 ### Today
 
-The Today screen is the primary decision-review surface.
+The Today screen is the primary scanner review surface.
 
 - scanner version, data mode and snapshot freshness;
 - counts of existing `RESELL_TEST`, `WATCH_ONLY` and evidence/revalidation signals;
 - **Priority review** cards showing validated buy, best modeled net exit, net spread, ROI, EU fair value and PCS/LQS/ECS/BOS;
-- filters by scanner route signal, price band and card-name search;
-- a broader **Discovery queue** sourced from `top_flips.csv` and explicitly labelled as pre-route sourcing evidence, not a final resale recommendation;
+- filters by review set, scanner route signal, price band and card-name search;
+- a broader **Discovery queue** explicitly labelled as pre-route sourcing evidence, not a final resale recommendation;
 - full routed-card and raw-field views available on demand.
 
-Each routed card now has a **Market profile** diagnostic block:
+Each routed card has a **Market profile** diagnostic block:
 
 - **Trend** — existing market-signal label plus Cardmarket 30-day move when available;
 - **Trend confidence** — existing market-signal confidence and evidence coverage count;
@@ -56,9 +72,30 @@ Important interpretation limits:
 
 The dashboard may reorder existing signals for readability, but it must never promote, downgrade or manufacture a signal.
 
+### Owned cards
+
+`dashboard/pages/1_Owned_cards.py` is the first-class decision surface for cards deliberately bought/tracked for resale review. Bundle-only €1 hero inventory is excluded unless explicitly promoted later.
+
+For each owned card the first screen shows:
+
+- exact card/set/collector number/Cardmarket ID;
+- language, condition and finish-matching rule;
+- **item price actually paid**;
+- **allocated landed cost** including basket shipping allocation;
+- lowest currently validated comparable **Cardmarket EN/NM ask** when available;
+- lowest currently validated comparable **CardTrader EN/NM ask** when available;
+- lowest comparable active ask and the gross room versus landed cost;
+- routed model net exit, owner-specific modelled profit and owner-specific ROI when a routed net exit exists.
+
+Active asks are explicitly labelled as competition references, not realised exits. Gross room is before selling fees, outbound postage and execution slippage.
+
+The owned-card acquisition ledger is `data/reference/owned_resale_cards.csv`. Basket shipping is currently allocated equally per card while the original item price remains separately visible. This makes the allocation transparent and reversible rather than hiding it inside one opaque cost number.
+
+The independent workflow `.github/workflows/owned_market_refresh.yml` refreshes Cardmarket/CardTrader comparable asks separately from the core scanner. A comparable ask must match exact product identity, English, NM/raw status and the stored finish rule. If finish cannot be verified, the dashboard withholds the floor and shows `VERIFY_FINISH` instead.
+
 ### Card detail
 
-The Card detail selector covers every exact Cardmarket product present in the current dashboard dataset, not only cards that already have an immutable model forecast. It can therefore show routed cards, forecast-only cards, pre-route discovery candidates and explicit research watches while keeping those stages visibly distinct.
+The Card detail selector covers every exact Cardmarket product present in the current dashboard dataset, not only cards that already have an immutable model forecast. It can therefore show routed cards, forecast-only cards, pre-route discovery candidates, owned/tracked cards and explicit research watches while keeping those stages visibly distinct.
 
 For routed/forecast cards it shows:
 
@@ -86,12 +123,13 @@ For `RESEARCH_WATCH` cards it shows the available research-market observations a
 ## Guardrails
 
 - Open SQLite in read-only mode.
-- Hosted mode reads a generated, whitelisted snapshot only.
+- Hosted mode reads generated/whitelisted market data only.
 - Do not calculate a new fair value in the dashboard.
-- Do not create a second set of BUY gates.
+- Do not create a second set of BUY or SELL gates.
 - Do not fuzzy-match cards in the UI.
 - Do not mutate predictions or outcomes.
-- Do not include secrets, user inventory, seller-level/private data, or API credentials in the hosted snapshot.
+- Do not include secrets, seller identities, addresses, private credentials or API tokens in hosted files.
+- User-approved acquisition costs may be displayed for the owned-card decision view because they are necessary to evaluate realised economics.
 - Discovery candidates must remain clearly labelled as pre-route sourcing evidence.
 - Missing files/data should degrade to informative empty states, not fabricated values.
 - Market-profile fields are diagnostics only and cannot silently change scanner scores/signals.
@@ -120,21 +158,25 @@ One-time setup:
 4. Main file path: `dashboard/app.py`.
 5. Deploy.
 
-No scanner API keys are required in Streamlit. The web app only reads the safe snapshot committed by GitHub Actions.
+No scanner API keys are required in Streamlit. The web app only reads the safe snapshots committed by GitHub Actions.
 
 After the one-time deployment, the normal flow is:
 
-`07:00 Dublin scanner -> snapshot export -> snapshot commit -> hosted dashboard refresh`
+`07:00 Dublin scanner -> scanner snapshot publish -> independent owned-card ask refresh -> hosted dashboard refresh`
 
 ## Snapshot generation
 
-To generate the same hosted payload manually after a local scanner run:
+To generate the same hosted scanner payload manually after a local scanner run:
 
 ```bash
 python scripts/export_dashboard_snapshot.py
 ```
 
-This replaces only `dashboard/data/dashboard_snapshot.json`.
+Owned-card ask data is refreshed separately with:
+
+```bash
+python scripts/refresh_owned_market.py
+```
 
 ## Future UI / analytics
 
@@ -143,8 +185,3 @@ Deferred ideas and maturity gates are indexed in `docs/FUTURE_IDEAS.md`. The nex
 `relative strength -> inventory risk -> probability-based expected value`
 
 Keep the dashboard replaceable: if Streamlit later becomes limiting, the underlying scanner/database contracts should allow another UI without changing model semantics.
-
-
-### Tracked Priority Review
-
-The Today → Priority Review can switch between routed priority cards, the exact tracked resale-review watchlist, or both. `data/reference/tracked_review_cards.csv` is intentionally public-safe: it contains exact card identity and a generic tracking role only. Purchase prices, ownership quantities and seller-level information are not exported to the hosted snapshot. Bundle-only €1 hero cards are intentionally excluded from this review list. Tracked cards without a current route show current Cardmarket observations without inventing a BUY/fair-value/exit signal.
