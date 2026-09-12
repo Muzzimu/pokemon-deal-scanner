@@ -23,6 +23,7 @@ Core rules:
 7. **No fabricated precision.** If finish, language, condition, shipping, route or exit evidence is unresolved, display the missing state instead of filling it with a proxy.
 8. **Artwork follows exact identity.** Small card images may be shown only from an explicit Cardmarket-product → TCGdex mapping. Never fuzzy-match artwork in the UI; if the mapping is missing, show no image.
 9. **Keep orientation chrome compact.** Version, freshness and review counters should use minimal vertical space so the first actionable review content appears quickly; governance detail can move to tooltips or progressive disclosure.
+10. **Prefer direct-selection controls for small filter sets.** Use segmented buttons/pills instead of dropdowns when choices are few and stable; hide no-op filters when only one value exists, and keep free-text search separate.
 
 ## Data modes
 

@@ -833,38 +833,32 @@ st.markdown(
         line-height: 1.25;
         color: rgba(127, 127, 127, 0.95);
     }
-    .market-strip {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 0.42rem;
-        margin: 0.45rem 0 0.7rem 0;
-    }
-    .market-date {
-        font-size: 1.08rem;
+    .review-date {
+        font-size: 1.02rem;
         font-weight: 650;
-        margin-right: 0.15rem;
+        line-height: 1.2;
+        padding-top: 0.25rem;
+        white-space: nowrap;
     }
-    .kpi-chip {
+    .discovery-chip {
+        display: inline-block;
         border: 1px solid rgba(127, 127, 127, 0.35);
         background: rgba(127, 127, 127, 0.08);
         border-radius: 999px;
-        padding: 0.16rem 0.52rem;
+        padding: 0.20rem 0.55rem;
         font-size: 0.82rem;
-        line-height: 1.35;
+        line-height: 1.3;
         white-space: nowrap;
+        margin-top: 0.08rem;
     }
-    .kpi-chip strong { font-weight: 700; }
-    .info-dot {
-        color: rgba(127, 127, 127, 0.95);
-        cursor: help;
-        font-size: 0.92rem;
-        padding-left: 0.1rem;
+    .discovery-chip strong { font-weight: 700; }
+    div[data-testid="stSegmentedControl"] {
+        margin-bottom: 0;
     }
     @media (max-width: 700px) {
         .scanner-title { font-size: 1.65rem; }
         .scanner-meta { width: 100%; }
-        .market-date { width: 100%; }
+        .review-date { white-space: normal; }
     }
     </style>
     """,
@@ -945,39 +939,86 @@ with tab_today:
     needs_count = sum(s in NEEDS_EVIDENCE_SIGNALS for s in route_signals)
     latest_date = predictions[0].get("snapshot_date", "—") if predictions else "—"
     review_date = compact_timestamp(latest_date).split(" · ", 1)[0]
-    st.markdown(
-        f"""
-        <div class="market-strip">
-          <span class="market-date">{review_date} market review</span>
-          <span class="kpi-chip">🟢 Resell <strong>{resell_count}</strong></span>
-          <span class="kpi-chip">🟡 Watch <strong>{watch_count}</strong></span>
-          <span class="kpi-chip">🔵 Needs data <strong>{needs_count}</strong></span>
-          <span class="kpi-chip">🔎 Discovery <strong>{len(discovery)}</strong></span>
-          <span class="info-dot" title="Market-profile diagnostics explain evidence only; they do not create BUY rules or alter v0.12 route signals.">ⓘ</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    non_edge_signals = sorted({s for s in route_signals if s and s != "NO_EDGE"})
+
+    resell_group = set(RESELL_SIGNALS) | {"STRONG_ARBITRAGE"}
+    watch_group = set(WATCH_SIGNALS)
+    needs_group = set(NEEDS_EVIDENCE_SIGNALS)
+    known_groups = resell_group | watch_group | needs_group
+    other_group = set(non_edge_signals) - known_groups
+    signal_option_map = {
+        f"🟢 Resell {resell_count}": resell_group,
+        f"🟡 Watch {watch_count}": watch_group,
+        f"🔵 Needs data {needs_count}": needs_group,
+    }
+    if other_group:
+        signal_option_map[f"⚪ Other {sum(s in other_group for s in route_signals)}"] = other_group
+    signal_options = list(signal_option_map)
+
+    h0, h1, h2, h3 = st.columns([1.45, 2.1, 4.1, 1.35], vertical_alignment="center")
+    with h0:
+        st.markdown(f'<div class="review-date">{review_date} market review</div>', unsafe_allow_html=True)
+    with h1:
+        review_choice = st.segmented_control(
+            "Review set",
+            options=["All", "Owned", "Routed"],
+            default="All",
+            label_visibility="collapsed",
+            width="stretch",
+            help="All = routed priority plus owned review cards. Owned excludes bundle-only €1 hero inventory.",
+        ) or "All"
+    with h2:
+        selected_signal_labels = st.segmented_control(
+            "Signals",
+            options=signal_options,
+            default=signal_options,
+            selection_mode="multi",
+            label_visibility="collapsed",
+            width="stretch",
+        ) or []
+    with h3:
+        st.markdown(
+            f'<div class="discovery-chip" title="Discovery is pre-route sourcing evidence. Market diagnostics do not create BUY rules.">🔎 Discovery <strong>{len(discovery)}</strong> ⓘ</div>',
+            unsafe_allow_html=True,
+        )
+
+    review_set = {"All": "Routed + owned", "Owned": "Owned cards", "Routed": "Routed priority"}[review_choice]
+    selected_signals = set()
+    for option in selected_signal_labels:
+        selected_signals.update(signal_option_map.get(option, set()))
 
     st.subheader("Priority review")
-    non_edge_signals = sorted({s for s in route_signals if s and s != "NO_EDGE"})
-    f0, f1, f2, f3 = st.columns([2, 2, 2, 3])
-    review_set = f0.selectbox(
-        "Review set",
-        options=["Routed + owned", "Owned cards", "Routed priority"],
-        index=0,
-        help="Owned cards are the exact resale-review purchases; bundle-only €1 hero cards are excluded.",
-    )
-    selected_signals = f1.multiselect("Signals", options=non_edge_signals, default=non_edge_signals, format_func=signal_label)
     price_bands = sorted({clean_text(r.get("price_band")) for r in routes if clean_text(r.get("price_band"))})
-    selected_bands = f2.multiselect("Price bands", options=price_bands, default=price_bands)
-    search_text = f3.text_input("Find card", placeholder="e.g. Dragonite, Pikachu, Charizard").strip().lower()
+    if len(price_bands) > 1:
+        band_col, search_col = st.columns([3, 5], vertical_alignment="center")
+        with band_col:
+            selected_bands = st.segmented_control(
+                "Price bands",
+                options=price_bands,
+                default=price_bands,
+                selection_mode="multi",
+                label_visibility="collapsed",
+                width="stretch",
+            ) or []
+        with search_col:
+            search_text = st.text_input(
+                "Find card",
+                placeholder="Find card — e.g. Dragonite, Pikachu, Charizard",
+                label_visibility="collapsed",
+            ).strip().lower()
+    else:
+        selected_bands = price_bands
+        search_text = st.text_input(
+            "Find card",
+            placeholder="Find card — e.g. Dragonite, Pikachu, Charizard",
+            label_visibility="collapsed",
+        ).strip().lower()
 
     routed_priority = []
     if review_set in {"Routed + owned", "Routed priority"}:
         for row in routes:
             signal = str(row.get("route_signal") or "").upper()
-            if signal == "NO_EDGE" or (selected_signals and signal not in selected_signals):
+            if signal == "NO_EDGE" or signal not in selected_signals:
                 continue
             band = clean_text(row.get("price_band"))
             if selected_bands and band not in selected_bands:
