@@ -602,40 +602,148 @@ with tab_today:
         )
 
 with tab_card:
-    if not predictions:
-        st.info("No card forecasts available yet.")
+    prediction_map = {str(r.get("id_product")): r for r in predictions if r.get("id_product") not in (None, "")}
+    route_rows_by_pid: dict[str, list[dict]] = {}
+    for row in routes:
+        pid_key = str(row.get("id_product") or "").strip()
+        if pid_key:
+            route_rows_by_pid.setdefault(pid_key, []).append(row)
+    discovery_map = {str(r.get("id_product")): r for r in discovery if r.get("id_product") not in (None, "")}
+    detail_ids = sorted(
+        set(prediction_map) | set(route_rows_by_pid) | set(discovery_map),
+        key=lambda pid_key: (
+            short_name(
+                (route_rows_by_pid.get(pid_key) or [{}])[0].get("name")
+                or prediction_map.get(pid_key, {}).get("name")
+                or discovery_map.get(pid_key, {}).get("name")
+            ).lower(),
+            int(pid_key),
+        ),
+    )
+
+    if not detail_ids:
+        st.info("No card-level scanner evidence is available yet.")
     else:
-        labels = {f"{short_name(r.get('name'))} — {card_context(r)}": int(r["id_product"]) for r in predictions}
-        selected = st.selectbox("Card", list(labels))
-        pid = labels[selected]
-        card = next(r for r in predictions if int(r["id_product"]) == pid)
-        matching_routes = [r for r in routes if str(r.get("id_product")) == str(pid)]
-        route = matching_routes[0] if matching_routes else card
+        def combined_card(pid_key: str) -> dict:
+            merged: dict = {}
+            for source in (
+                discovery_map.get(pid_key),
+                prediction_map.get(pid_key),
+                (route_rows_by_pid.get(pid_key) or [None])[0],
+            ):
+                if not source:
+                    continue
+                for field, value in source.items():
+                    if value not in (None, ""):
+                        merged[field] = value
+            merged["id_product"] = pid_key
+            return merged
+
+        detail_cards = {pid_key: combined_card(pid_key) for pid_key in detail_ids}
+
+        def detail_stage(pid_key: str) -> str:
+            if pid_key in route_rows_by_pid:
+                return "ROUTED"
+            if pid_key in prediction_map:
+                return "FORECAST"
+            status = str(discovery_map.get(pid_key, {}).get("status") or "").upper()
+            if status == "RESEARCH_WATCH":
+                return "RESEARCH WATCH"
+            return "DISCOVERY"
+
+        def detail_label(pid_key: str) -> str:
+            row = detail_cards[pid_key]
+            return f"{short_name(row.get('name'))} — {card_context(row)} · {detail_stage(pid_key)}"
+
+        selected_pid = st.selectbox(
+            "Card",
+            detail_ids,
+            format_func=detail_label,
+            help="Includes routed cards, immutable forecasts, discovery candidates and explicit research watches present in the current dashboard dataset.",
+        )
+        pid_key = str(selected_pid)
+        pid = int(pid_key)
+        card = detail_cards[pid_key]
+        matching_routes = list(route_rows_by_pid.get(pid_key) or [])
+        prediction = prediction_map.get(pid_key)
+        discovery_row = discovery_map.get(pid_key)
 
         st.subheader(short_name(card.get("name")))
-        st.caption(card_context(card))
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("EU fair value", format_eur(route.get("eu_fair_value_eur")))
-        c2.metric("Validated buy", format_eur(route.get("best_validated_buy_eur")))
-        c3.metric("Deal score", format_score(route.get("deal_score")))
-        c4.metric("Route", signal_label(route.get("route_signal")))
-        st.markdown(f"**Exit route:** {human_channel(route.get('best_sell_channel'))}")
-        render_score_line(route)
-        position = eu_position_text(route)
-        if position:
-            st.caption(position)
-        render_market_profile(route, expanded=True)
-        explanation = plain_gate_explanation(route)
-        if explanation:
-            st.markdown(f"**Decision explanation:** {explanation}")
+        st.caption(f"{card_context(card)} · {detail_stage(pid_key)}")
 
-        if matching_routes:
-            st.subheader("Current route evidence")
-            st.dataframe(route_summary_rows(matching_routes), use_container_width=True, hide_index=True)
-            with st.expander("Raw route fields"):
-                st.dataframe(matching_routes, use_container_width=True, hide_index=True)
+        if matching_routes or prediction:
+            route = dict(card)
+            for source in (prediction, matching_routes[0] if matching_routes else None):
+                if not source:
+                    continue
+                for field, value in source.items():
+                    if value not in (None, ""):
+                        route[field] = value
 
-        outcomes = latest_outcomes(conn, pid) if conn is not None else list(outcomes_by_card.get(str(pid)) or [])
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("EU fair value", format_eur(route.get("eu_fair_value_eur")))
+            c2.metric("Validated buy", format_eur(route.get("best_validated_buy_eur")))
+            c3.metric("Deal score", format_score(route.get("deal_score")))
+            c4.metric("Route", signal_label(route.get("route_signal")))
+            st.markdown(f"**Exit route:** {human_channel(route.get('best_sell_channel'))}")
+            render_score_line(route)
+            position = eu_position_text(route)
+            if position:
+                st.caption(position)
+            render_market_profile(route, expanded=True)
+            explanation = plain_gate_explanation(route)
+            if explanation:
+                st.markdown(f"**Decision explanation:** {explanation}")
+
+            if matching_routes:
+                st.subheader("Current route evidence")
+                st.dataframe(route_summary_rows(matching_routes), use_container_width=True, hide_index=True)
+                with st.expander("Raw route fields"):
+                    st.dataframe(matching_routes, use_container_width=True, hide_index=True)
+
+            if prediction:
+                with st.expander("Immutable forecast · audit view"):
+                    st.json(prediction)
+        else:
+            status = clean_text((discovery_row or {}).get("status")) or "DISCOVERY"
+            if status.upper() == "RESEARCH_WATCH":
+                st.info("Research watch only — evidence is being collected without creating a BUY or fair-value override.")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Cardmarket trend", format_eur(card.get("trend")))
+                c2.metric("30d average", format_eur(card.get("avg30")))
+                c3.metric("7d average", format_eur(card.get("avg7")))
+                c4.metric("Scanner status", status.replace("_", " "))
+                note = clean_text(card.get("research_note"))
+                if note:
+                    st.caption(note)
+            else:
+                st.info("Pre-route discovery candidate only — identity, landed-cost, liquidity and market-quality gates still apply before any final resale decision.")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Candidate buy", format_eur(card.get("best_validated_sourcing_price")))
+                c2.metric("30d average", format_eur(card.get("avg30")))
+                c3.metric("Gap", format_pct(card.get("gap_pct")))
+                c4.metric("Deal score", format_score(card.get("deal_score")))
+                sellers = as_int(card.get("ct_visible_sellers"))
+                units = as_int(card.get("ct_visible_units"))
+                supply_bits = []
+                if sellers is not None:
+                    supply_bits.append(f"{sellers} CardTrader sellers")
+                if units is not None:
+                    supply_bits.append(f"{units} visible units")
+                if supply_bits:
+                    st.caption(" · ".join(supply_bits))
+                st.markdown(f"**Scanner status:** {status}")
+                with st.expander("Discovery evidence"):
+                    st.write({
+                        "Cardmarket trend": format_eur(card.get("trend")),
+                        "Cardmarket 1d average": format_eur(card.get("avg1")),
+                        "Cardmarket 7d average": format_eur(card.get("avg7")),
+                        "Cardmarket 30d average": format_eur(card.get("avg30")),
+                        "Cardmarket EN/NM floor": format_eur(card.get("cm_en_nm_floor")),
+                        "CardTrader EN/NM floor": format_eur(card.get("ct_en_nm_floor")),
+                    })
+
+        outcomes = latest_outcomes(conn, pid) if conn is not None else list(outcomes_by_card.get(pid_key) or [])
         st.subheader("Matured outcomes")
         if outcomes:
             st.dataframe(outcomes, use_container_width=True, hide_index=True)
