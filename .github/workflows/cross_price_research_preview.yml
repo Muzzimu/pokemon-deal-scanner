@@ -12,6 +12,7 @@ permissions:
 env:
   PYTHON_VERSION: '3.12'
   PYTHONPATH: src
+  CARDTRADER_API_TOKEN: ${{ secrets.CARDTRADER_API_TOKEN }}
 
 jobs:
   preview:
@@ -34,10 +35,10 @@ jobs:
           restore-keys: |
             pokemon-scanner-db-
 
-      - name: Generate cross-price research panel
+      - name: Generate and enrich cross-price research panel
         run: |
           test -f db/pokemon_deal_scanner.sqlite
-          python scripts/generate_cross_price_research.py --output dashboard/data/cross_price_research_preview.csv
+          python scripts/enrich_cross_price_cardtrader.py --output dashboard/data/cross_price_research_preview.csv
 
       - name: Print band summary
         run: |
