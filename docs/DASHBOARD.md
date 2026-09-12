@@ -213,3 +213,8 @@ Keep the dashboard replaceable: if Streamlit later becomes limiting, the underly
 
 Owned-card CM/CT refreshes preserve ask-side structure from the same already-fetched exact EN/NM/finish-matched rows: depth within +3% and +10% of floor, next distinct ask gap, seller concentration and HHI. The append-only `dashboard/data/owned_depth_history.csv` starts prospective history that cannot be reconstructed reliably later. These fields are display/research diagnostics only; they do not change v0.12 BUY/FV/route logic.
 
+
+## Static card fundamentals
+
+Static metadata may enrich the dashboard only through the explicit Cardmarket-product → exact TCGdex ID mapping already used for artwork. Cache release date, rarity/treatment metadata, illustrator, regulation mark, legal flags and variant availability in `data/reference/card_fundamentals.csv`. Never fuzzy-match metadata. This layer is context/research only and does not alter v0.12 fair value, BUY gates or route scoring. Refresh when exact mappings change or manually; it does not need a daily polling cadence.
+

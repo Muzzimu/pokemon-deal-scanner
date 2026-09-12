@@ -19,6 +19,7 @@ OWNED_MARKET_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
 CARD_IMAGE_PATH = ROOT / "dashboard" / "data" / "card_images.json"
 PROVIDER_USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
 PROVIDER_LIMITS_PATH = ROOT / "data" / "reference" / "provider_limits.csv"
+CARD_FUNDAMENTALS_PATH = ROOT / "data" / "reference" / "card_fundamentals.csv"
 
 RESELL_SIGNALS = {"RESELL_TEST"}
 WATCH_SIGNALS = {"WATCH_ONLY"}
@@ -756,12 +757,35 @@ def owned_result_summary(row: dict, landed: float | None) -> tuple[str, float | 
     )
 
 
+def fundamentals_text(row: dict) -> str | None:
+    parts = []
+    rarity = clean_text(row.get("fund_rarity"))
+    illustrator = clean_text(row.get("fund_illustrator"))
+    release_date = clean_text(row.get("fund_release_date"))
+    regulation = clean_text(row.get("fund_regulation_mark"))
+    standard = clean_text(row.get("fund_standard_legal"))
+    if rarity:
+        parts.append(rarity)
+    if illustrator:
+        parts.append(f"artist {illustrator}")
+    if release_date:
+        parts.append(f"released {release_date}")
+    if regulation:
+        parts.append(f"regulation {regulation}")
+    if standard in {"0", "1"}:
+        parts.append("Standard legal" if standard == "1" else "not Standard legal")
+    return " · ".join(parts) if parts else None
+
+
 def render_owned_position(row: dict, routed: bool) -> None:
     landed = as_float(row.get("landed_cost_eur"))
     item_paid = as_float(row.get("item_paid_eur"))
     shipping = as_float(row.get("allocated_shipping_eur"))
     summary, owner_profit, owner_roi = owned_result_summary(row, landed)
     st.markdown(f"**What it means:** {summary}")
+    static_context = fundamentals_text(row)
+    if static_context:
+        st.caption(f"Static card context: {static_context}")
 
     st.markdown("**Your position**")
     purchase_source = clean_text(row.get("purchase_source")) or "Unknown source"
@@ -942,6 +966,8 @@ snapshot = read_snapshot(SNAPSHOT_PATH)
 CARD_IMAGES = load_card_images(CARD_IMAGE_PATH)
 provider_usage_rows = read_csv(PROVIDER_USAGE_PATH)
 provider_limits = read_csv(PROVIDER_LIMITS_PATH)
+card_fundamental_rows = read_csv(CARD_FUNDAMENTALS_PATH)
+card_fundamentals_by_pid = {str(r.get("id_product")): r for r in card_fundamental_rows if r.get("id_product")}
 conn: sqlite3.Connection | None = None
 
 if db_path.exists():
@@ -983,11 +1009,26 @@ owned_by_pid = {str(r.get("id_product")): dict(r) for r in owned_rows if r.get("
 enriched_tracked = []
 for source in tracked:
     row = dict(source)
+    fundamentals = card_fundamentals_by_pid.get(str(row.get("id_product")))
+    if fundamentals:
+        for field, value in fundamentals.items():
+            if field in {"id_product", "name"} or value in (None, ""):
+                continue
+            row[f"fund_{field}"] = value
     owned = owned_by_pid.get(str(row.get("id_product")))
     if owned:
         row.update({k: v for k, v in owned.items() if v not in (None, "")})
     enriched_tracked.append(row)
 tracked = enriched_tracked
+for collection in (routes, discovery, predictions):
+    for row in collection:
+        fundamentals = card_fundamentals_by_pid.get(str(row.get("id_product")))
+        if not fundamentals:
+            continue
+        for field, value in fundamentals.items():
+            if field in {"id_product", "name"} or value in (None, ""):
+                continue
+            row.setdefault(f"fund_{field}", value)
 
 for key in ("t7", "t7_cards", "t30", "t30_cards"):
     maturity[key] = int(maturity.get(key) or 0)
