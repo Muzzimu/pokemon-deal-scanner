@@ -8,6 +8,19 @@ Status: durable backlog index for ideas that are useful but intentionally deferr
 - This file is the stable index so future ideas are not scattered across chat history.
 - Do not implement deferred analytics merely because they sound plausible. Respect the maturity, leakage and validation rules in `AGENTS.md`, `docs/MODEL_VALIDATION.md` and `docs/EXPERIENCE_STORE.md`.
 
+## Indicator roles: not everything becomes a BUY input
+
+Future development should distinguish **information value** from **decision weight**. The scanner can become a richer Pokémon market-research system without forcing every useful indicator into a trade recommendation.
+
+Use four roles:
+
+1. **Decision inputs** — only validated features that demonstrate stable incremental out-of-sample value and may influence valuation, PCS/LQS/ECS/BOS, route gates, EV or BUY logic.
+2. **Market diagnostics** — informative measures such as market trend, ask-side depth, seller concentration, relative strength, condition curves, collector/competitive demand and liquidity structure. These can appear prominently in the dashboard without affecting BUY/WATCH.
+3. **Context / risk flags** — factual events or unusual conditions such as rotation proximity, reprint announcements, tournament spikes, lifecycle changes or abnormal supply moves. They support investigation and interpretation, not automatic causal rules.
+4. **Research features** — candidate variables collected prospectively and evaluated with chronological walk-forward tests. They remain outside production decisions until evidence supports promotion.
+
+A feature that fails to improve recommendation quality may still be worth retaining as a market diagnostic. Do not create extra headline scores or mechanically aggregate correlated indicators just because the data exists. The dashboard may intentionally contain more market information than the formal decision engine uses.
+
 ## Current deferred ideas
 
 ### Post-v0.12 research roadmap
