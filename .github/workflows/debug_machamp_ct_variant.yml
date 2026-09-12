@@ -1,0 +1,47 @@
+name: Debug Machamp CT variant
+
+on:
+  push:
+    paths:
+      - '.github/workflows/debug_machamp_ct_variant.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect CardTrader Machamp offers
+        shell: bash
+        env:
+          CARDTRADER_API_TOKEN: ${{ secrets.CARDTRADER_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          token=os.environ.get('CARDTRADER_API_TOKEN','')
+          if not token:
+              raise SystemExit('missing CARDTRADER_API_TOKEN')
+          params=urllib.parse.urlencode({'blueprint_id':118578,'language':'en'})
+          req=urllib.request.Request(
+              'https://api.cardtrader.com/api/v2/marketplace/products?'+params,
+              headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'pokemon-deal-scanner-debug'}
+          )
+          with urllib.request.urlopen(req, timeout=60) as r:
+              data=json.load(r)
+          rows=[]
+          if isinstance(data,dict):
+              for v in data.values():
+                  if isinstance(v,list): rows.extend(v)
+          for p in sorted(rows, key=lambda x: ((x.get('price') or {}).get('cents',10**12)))[:12]:
+              print(json.dumps({
+                  'id':p.get('id'),
+                  'price':p.get('price'),
+                  'quantity':p.get('quantity'),
+                  'description':p.get('description'),
+                  'properties_hash':p.get('properties_hash'),
+                  'graded':p.get('graded'),
+                  'on_vacation':p.get('on_vacation'),
+                  'seller_country':(p.get('user') or {}).get('country_code')
+              }, sort_keys=True))
+          PY
