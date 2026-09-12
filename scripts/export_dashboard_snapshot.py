@@ -11,6 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.yaml"
 DEFAULT_OUTPUT = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
+RESEARCH_WATCH_PATH = ROOT / "data" / "reference" / "research_watchlist.csv"
 
 PREDICTION_FIELDS = [
     "snapshot_date", "id_product", "name", "expansion_name", "number", "model_version",
@@ -35,9 +36,9 @@ ROUTE_FIELDS = [
 
 DISCOVERY_FIELDS = [
     "snapshot_date", "id_product", "name", "expansion_name", "number", "rarity",
-    "best_validated_sourcing_price", "deal_score", "status", "trend", "avg30",
+    "best_validated_sourcing_price", "deal_score", "status", "trend", "avg30", "avg7", "avg1",
     "cm_en_nm_floor", "ct_en_nm_floor", "ct_visible_sellers", "ct_visible_units",
-    "gap_pct", "popularity_score",
+    "gap_pct", "popularity_score", "research_note",
 ]
 
 # Dashboard-only diagnostics. These are observations/explanations, not new model scores.
@@ -229,6 +230,67 @@ def merge_market_profile(routes: list[dict], signals: list[dict], quality: list[
     return out
 
 
+def research_watch_rows(conn: sqlite3.Connection, path: Path) -> list[dict]:
+    """Expose exact-card research pilots without promoting them into routed BUY logic."""
+    rows = read_csv(path)
+    if not rows:
+        return []
+    watched = enrich_identity(conn, rows)
+    out: list[dict] = []
+    for source in watched:
+        try:
+            pid = int(source.get("id_product") or 0)
+        except (TypeError, ValueError):
+            continue
+        if pid <= 0:
+            continue
+
+        product = None
+        if table_exists(conn, "products"):
+            product = conn.execute(
+                "SELECT name, expansion_name, number, rarity FROM products WHERE id_product=?",
+                (pid,),
+            ).fetchone()
+        price = None
+        if table_exists(conn, "price_snapshots"):
+            price = conn.execute(
+                """
+                SELECT snapshot_date, low, trend, avg1, avg7, avg30
+                FROM price_snapshots
+                WHERE id_product=?
+                ORDER BY snapshot_date DESC
+                LIMIT 1
+                """,
+                (pid,),
+            ).fetchone()
+
+        product_dict = dict(product) if product else {}
+        price_dict = dict(price) if price else {}
+        out.append({
+            "snapshot_date": price_dict.get("snapshot_date") or "",
+            "id_product": pid,
+            "name": source.get("name") or product_dict.get("name") or f"Cardmarket ID {pid}",
+            "expansion_name": source.get("expansion_name") or product_dict.get("expansion_name"),
+            "number": source.get("number") or product_dict.get("number"),
+            "rarity": product_dict.get("rarity"),
+            "best_validated_sourcing_price": None,
+            "deal_score": None,
+            "status": source.get("status") or "RESEARCH_WATCH",
+            "trend": price_dict.get("trend"),
+            "avg30": price_dict.get("avg30"),
+            "avg7": price_dict.get("avg7"),
+            "avg1": price_dict.get("avg1"),
+            "cm_en_nm_floor": None,
+            "ct_en_nm_floor": None,
+            "ct_visible_sellers": None,
+            "ct_visible_units": None,
+            "gap_pct": None,
+            "popularity_score": None,
+            "research_note": source.get("research_note") or "",
+        })
+    return out
+
+
 def build_snapshot() -> dict:
     cfg = load_cfg()
     db_path = resolve_path(cfg["paths"]["database"])
@@ -251,6 +313,16 @@ def build_snapshot() -> dict:
     routes = [select_fields(row, route_fields) for row in profile_routes]
 
     raw_discovery = read_csv(output_dir / "top_flips.csv")[:75]
+    seen_discovery_ids = {
+        str(row.get("id_product") or "").strip()
+        for row in raw_discovery
+        if str(row.get("id_product") or "").strip()
+    }
+    for research_row in research_watch_rows(conn, RESEARCH_WATCH_PATH):
+        pid = str(research_row.get("id_product") or "").strip()
+        if pid and pid not in seen_discovery_ids:
+            raw_discovery.append(research_row)
+            seen_discovery_ids.add(pid)
     discovery = [
         select_fields(row, DISCOVERY_FIELDS)
         for row in enrich_identity(conn, raw_discovery)
