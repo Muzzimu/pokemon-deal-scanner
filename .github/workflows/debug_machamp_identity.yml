@@ -1,0 +1,42 @@
+name: Debug Machamp identity
+
+on:
+  push:
+    paths:
+      - '.github/workflows/debug_machamp_identity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore latest scanner database state
+        uses: actions/cache/restore@v4
+        with:
+          path: db/pokemon_deal_scanner.sqlite
+          key: debug-machamp-${{ github.run_id }}
+          restore-keys: |
+            pokemon-scanner-db-
+      - name: Inspect Machamp mappings and offers
+        run: |
+          python - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect('db/pokemon_deal_scanner.sqlite')
+          conn.row_factory = sqlite3.Row
+          pid = 274891
+          print('PRODUCT')
+          for r in conn.execute('SELECT * FROM products WHERE id_product=?', (pid,)):
+              print(dict(r))
+          print('\nMAPPINGS')
+          for r in conn.execute('''SELECT m.id_product,b.blueprint_id,b.name,b.expansion_id,b.expansion_name,b.collector_number,b.version,b.card_market_ids_json FROM cardtrader_blueprint_map m JOIN cardtrader_blueprints b ON b.blueprint_id=m.blueprint_id WHERE m.id_product=? ORDER BY b.expansion_name,b.collector_number,b.version''',(pid,)):
+              print(dict(r))
+          d=conn.execute('SELECT MAX(snapshot_date) d FROM cardtrader_offer_snapshots').fetchone()['d']
+          print('\nLATEST CT SNAPSHOT', d)
+          print('\nEN/NM OFFERS')
+          for r in conn.execute('''SELECT o.snapshot_date,o.blueprint_id,o.offer_id,o.id_product,o.seller_username,o.seller_country,o.quantity,o.price_eur,o.language,o.condition,o.graded,o.on_vacation,b.expansion_name,b.collector_number,b.version,b.name FROM cardtrader_offer_snapshots o LEFT JOIN cardtrader_blueprints b ON b.blueprint_id=o.blueprint_id WHERE o.snapshot_date=? AND o.id_product=? AND o.language='en' AND lower(o.condition) IN ('near mint','near_mint','nm') AND o.graded=0 AND o.on_vacation=0 ORDER BY o.price_eur,o.offer_id''',(d,pid)):
+              print(dict(r))
+          conn.close()
+          PY
