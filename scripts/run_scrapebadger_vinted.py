@@ -21,9 +21,10 @@ from deal_scanner.scrapebadger_research import (
 
 
 WATCHLIST = ROOT / "data" / "reference" / "vinted_watchlist.csv"
-DB_PATH = ROOT / "db" / "pokemon_deal_scanner.sqlite"
+DB_PATH = ROOT / "db" / "scrapebadger_research.sqlite"
 OUTPUT = ROOT / "output" / "vinted_candidates.csv"
 STATUS = ROOT / "output" / "scrapebadger_vinted_status.json"
+PUBLIC_FIELDS = [field for field in VINTED_FIELDS if field != "seller_id"]
 MARKET = "ie"
 
 
@@ -38,7 +39,7 @@ def main() -> int:
     client = ScrapeBadgerClient()
 
     if not client.configured:
-        write_csv(OUTPUT, [], VINTED_FIELDS)
+        write_csv(OUTPUT, [], PUBLIC_FIELDS)
         write_status({
             "source": "SCRAPEBADGER_VINTED",
             "status": "UNAVAILABLE",
@@ -106,7 +107,6 @@ def main() -> int:
         if detail_limit and not detail_targets and query_rows:
             detail_targets = query_rows[:1]
 
-        detailed_ids: set[str] = set()
         for search_row in detail_targets:
             item_id = str(search_row["item_id"])
             detail_requests += 1
@@ -123,7 +123,6 @@ def main() -> int:
                 )
                 if detail_row:
                     query_rows = [detail_row if r["item_id"] == item_id else r for r in query_rows]
-                    detailed_ids.add(item_id)
             except Exception as exc:
                 errors.append({
                     "query_id": watch.get("query_id"),
@@ -137,14 +136,13 @@ def main() -> int:
                     if row["item_id"] == item_id:
                         row["detail_checked"] = 1
                         row["listing_state"] = "DETAIL_UNAVAILABLE"
-                        detailed_ids.add(item_id)
 
         all_rows.extend(query_rows)
 
     conn = connect(DB_PATH)
     written = persist_vinted(conn, all_rows)
     conn.close()
-    write_csv(OUTPUT, all_rows, VINTED_FIELDS)
+    write_csv(OUTPUT, all_rows, PUBLIC_FIELDS)
 
     status = "OK" if not errors else ("DEGRADED" if all_rows else "UNAVAILABLE")
     counts: dict[str, int] = {}
@@ -178,6 +176,7 @@ def main() -> int:
             "VINTED_CLOSED_STATE_UNPRICED",
         ],
         "valuation_weight": 0,
+        "storage": "isolated research database",
     })
     print(
         f"ScrapeBadger Vinted pilot: status={status} search={search_requests} detail={detail_requests} "
