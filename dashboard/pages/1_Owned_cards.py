@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -53,9 +54,34 @@ def eur(value) -> str:
     return "—" if amount is None else f"€{amount:,.2f}"
 
 
+def signed_eur(value) -> str:
+    amount = as_float(value)
+    if amount is None:
+        return "—"
+    if amount > 0:
+        return f"+€{amount:,.2f}"
+    if amount < 0:
+        return f"-€{abs(amount):,.2f}"
+    return "€0.00"
+
+
 def pct(value) -> str:
     amount = as_float(value)
     return "—" if amount is None else f"{amount:,.1f}%"
+
+
+def signed_pct(value) -> str:
+    amount = as_float(value)
+    if amount is None:
+        return "—"
+    return f"{amount:+,.1f}%"
+
+
+def clean_text(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return None if not text or text.lower() in {"none", "nan", "null"} else text
 
 
 def signal_label(signal: str | None) -> str:
@@ -70,6 +96,22 @@ def signal_label(signal: str | None) -> str:
     }
     raw = str(signal or "").upper()
     return labels.get(raw, raw.replace("_", " ") if raw else "🟣 OWNED REVIEW")
+
+
+def friendly_source(value) -> str:
+    raw = clean_text(value)
+    if not raw:
+        return "Source not retained"
+    labels = {
+        "CARDTRADER_EN_NM": "CardTrader EN/NM ask",
+        "CARDMARKET_EN_NM": "Cardmarket EN/NM ask",
+        "CARDTRADER_DIRECT": "CardTrader Direct",
+        "CARDTRADER_ZERO": "CardTrader Zero",
+        "ADVERTS": "Adverts",
+        "ADVERTS.IE": "Adverts.ie",
+        "CARDMARKET": "Cardmarket",
+    }
+    return labels.get(raw.upper(), raw.replace("_", " ").title())
 
 
 def market_floor(source: dict) -> float | None:
@@ -88,22 +130,38 @@ def ask_sample_text(source: dict) -> str | None:
     values = source.get("ask_sample_eur")
     if not isinstance(values, list) or not values:
         return None
-    formatted = " / ".join(eur(v) for v in values)
-    return f"cheapest comparable asks: {formatted}"
+    return " / ".join(eur(v) for v in values)
+
+
+def market_depth(source: dict, source_name: str) -> str:
+    status = str(source.get("status") or "NOT_QUERIED").upper()
+    if status != "OK":
+        if status == "VERIFY_FINISH":
+            return "finish unverified"
+        if status == "NO_COMPARABLE_EN_NM_ASK":
+            return "no exact ask"
+        if status.startswith("MISSING_"):
+            return "source unavailable"
+        if status == "DEGRADED":
+            return "refresh degraded"
+        return "not queried"
+    if source_name == "CardTrader":
+        sellers = source.get("visible_sellers")
+        units = source.get("visible_units")
+        bits = []
+        if sellers not in (None, ""):
+            bits.append(f"{sellers} sellers")
+        if units not in (None, ""):
+            bits.append(f"{units} cards")
+        return " · ".join(bits) if bits else "exact EN/NM"
+    offers = source.get("visible_offer_rows")
+    return f"{offers} comparable offers" if offers not in (None, "") else "exact EN/NM"
 
 
 def market_status(source: dict, source_name: str) -> str:
     status = str(source.get("status") or "NOT_QUERIED").upper()
     if status == "OK":
-        bits = [f"{source_name} comparable EN/NM ask"]
-        if source.get("visible_sellers") not in (None, ""):
-            bits.append(f"{source.get('visible_sellers')} sellers")
-        if source.get("visible_units") not in (None, ""):
-            bits.append(f"{source.get('visible_units')} units")
-        sample = ask_sample_text(source)
-        if sample:
-            bits.append(sample)
-        return " · ".join(bits)
+        return f"{source_name}: exact comparable EN/NM ask"
     if status == "VERIFY_FINISH":
         return f"{source_name}: finish/parallel could not be verified — floor withheld"
     if status == "NO_COMPARABLE_EN_NM_ASK":
@@ -116,11 +174,7 @@ def market_status(source: dict, source_name: str) -> str:
 
 
 def historical_reference_quality(row: dict) -> dict:
-    """Consistency diagnostic for product-level Cardmarket summary marks.
-
-    This does not claim that Cardmarket historical sales are EN/NM or finish-clean.
-    It only describes how strongly Trend/1d/7d/30d disagree with one another.
-    """
+    """Consistency diagnostic for product-level Cardmarket summary marks."""
     fields = {
         "Trend": as_float(row.get("trend")),
         "1d": as_float(row.get("avg1")),
@@ -160,7 +214,73 @@ def index_by_pid(rows: list[dict]) -> dict[str, dict]:
     return {str(r.get("id_product")): r for r in rows if r.get("id_product") not in (None, "")}
 
 
+def compact_stat(label: str, value: str, sub: str | None = None) -> None:
+    sub_html = f'<div class="owned-stat-sub">{escape(sub)}</div>' if sub else ""
+    st.markdown(
+        f'<div class="owned-stat"><div class="owned-stat-label">{escape(label)}</div>'
+        f'<div class="owned-stat-value">{escape(value)}</div>{sub_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_price_table(cardmarket: dict, cardtrader: dict, landed: float | None) -> None:
+    rows = []
+    for source_name, source in (("Cardmarket", cardmarket), ("CardTrader", cardtrader)):
+        floor = market_floor(source)
+        robust = market_robust_floor(source)
+        delta = None if floor is None or landed is None else floor - landed
+        rows.append(
+            "<tr>"
+            f"<td><strong>{escape(source_name)}</strong></td>"
+            f"<td>{escape(eur(floor))}</td>"
+            f"<td>{escape(eur(robust))}</td>"
+            f"<td>{escape(market_depth(source, source_name))}</td>"
+            f"<td>{escape(signed_eur(delta))}</td>"
+            "</tr>"
+        )
+    st.markdown(
+        '<table class="owned-price-table"><thead><tr><th>Source</th><th>Lowest ask</th>'
+        '<th>Robust ask</th><th>Depth</th><th>vs landed</th></tr></thead><tbody>'
+        + "".join(rows)
+        + "</tbody></table>",
+        unsafe_allow_html=True,
+    )
+    samples = []
+    for label, source in (("CM", cardmarket), ("CT", cardtrader)):
+        sample = ask_sample_text(source)
+        if sample:
+            samples.append(f"{label} cheapest sample: {sample}")
+    if samples:
+        st.caption(" · ".join(samples))
+
+
+def result_summary(model_exit: float | None, landed: float | None, model_profit: float | None, model_roi: float | None, route: str | None) -> str:
+    if model_exit is not None and landed is not None and model_profit is not None:
+        direction = "gain" if model_profit >= 0 else "loss"
+        return (
+            f"Scanner's current net-exit estimate is {eur(model_exit)} via {friendly_source(route)}, "
+            f"which would be a {direction} of {eur(abs(model_profit))} ({abs(model_roi or 0):.1f}%) versus your landed cost."
+        )
+    return "No routed net-exit estimate exists yet; live asks below are market context, not a sell recommendation."
+
+
 st.set_page_config(page_title="Owned Pokémon cards", page_icon="🗂️", layout="wide")
+st.markdown(
+    """
+    <style>
+    .owned-stat {padding: 0.18rem 0 0.48rem 0;}
+    .owned-stat-label {font-size: 0.74rem; opacity: 0.72; line-height: 1.15;}
+    .owned-stat-value {font-size: 1.28rem; font-weight: 650; line-height: 1.2; margin-top: 0.12rem;}
+    .owned-stat-sub {font-size: 0.70rem; opacity: 0.68; line-height: 1.25; margin-top: 0.12rem;}
+    .owned-section-title {font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.035em; margin-top: 0.45rem; margin-bottom: 0.25rem; opacity: 0.82;}
+    .owned-summary {font-size: 0.88rem; line-height: 1.45; padding: 0.38rem 0.52rem; border-left: 3px solid rgba(128,128,128,0.45); margin: 0.20rem 0 0.55rem 0;}
+    .owned-price-table {width: 100%; border-collapse: collapse; font-size: 0.78rem; margin: 0.10rem 0 0.30rem 0;}
+    .owned-price-table th {text-align: left; font-size: 0.69rem; opacity: 0.68; font-weight: 650; padding: 0.30rem 0.32rem; border-bottom: 1px solid rgba(128,128,128,0.30);}
+    .owned-price-table td {padding: 0.36rem 0.32rem; border-bottom: 1px solid rgba(128,128,128,0.16); vertical-align: top;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 snapshot = read_json(SNAPSHOT_PATH)
 owned_market = read_json(OWNED_MARKET_PATH)
@@ -181,7 +301,7 @@ else:
     st.warning("The owned-card live market refresh has not published yet. Cost basis is available, but current comparable asks may be blank.")
 
 st.info(
-    "Active asks are competition references, not realised sale prices. Literal floor = cheapest exact comparable ask. Robust ask = median of the cheapest three comparable asks when available. Historical confidence below measures consistency of Cardmarket summary marks only."
+    "Active asks are competition references, not realised sale prices. Lowest ask = cheapest exact comparable listing. Robust ask = median of the cheapest three comparable asks when available."
 )
 
 search = st.text_input("Find owned card", placeholder="e.g. Dragonite, Gastly, Lucario").strip().lower()
@@ -235,16 +355,16 @@ for start in range(0, len(view), 2):
             lowest_robust = min(robust_floors) if robust_floors else None
             landed = as_float(card.get("landed_cost_eur"))
             item_paid = as_float(card.get("item_paid_eur"))
+            shipping = as_float(card.get("allocated_shipping_eur"))
             model_exit = as_float(route.get("best_sell_net_eur"))
             model_profit = None if model_exit is None or landed is None else model_exit - landed
             model_roi = None if model_profit is None or not landed else (model_profit / landed) * 100.0
-            gross_room = None if lowest_ask is None or landed is None else lowest_ask - landed
             history = historical_reference_quality(tracked_row)
 
             with st.container(border=True):
                 art = image_url(pid, "low")
                 if art:
-                    art_col, title_col = st.columns([1, 2.6], vertical_alignment="top")
+                    art_col, title_col = st.columns([1, 2.8], vertical_alignment="top")
                     with art_col:
                         st.image(art, width=125)
                     with title_col:
@@ -262,83 +382,122 @@ for start in range(0, len(view), 2):
                     )
                     st.markdown(f"**{signal_label(route.get('route_signal'))}**")
 
-                c1, c2 = st.columns(2)
-                c1.metric("You paid", eur(item_paid))
-                c2.metric("Your landed cost", eur(landed))
+                summary = result_summary(model_exit, landed, model_profit, model_roi, route.get("best_sell_channel"))
+                st.markdown(f'<div class="owned-summary">{escape(summary)}</div>', unsafe_allow_html=True)
 
-                c3, c4 = st.columns(2)
-                c3.metric("CM literal floor", eur(cm_floor))
-                c4.metric("CM robust ask", eur(cm_robust))
-                st.caption(market_status(cm, "Cardmarket"))
+                st.markdown('<div class="owned-section-title">Your position</div>', unsafe_allow_html=True)
+                purchase_source = clean_text(card.get("purchase_source")) or "Unknown source"
+                purchase_date = clean_text(card.get("purchase_date")) or "date not retained"
+                st.caption(f"Bought {purchase_date} on **{purchase_source}** · finish rule: {card.get('finish_requirement') or '—'}")
+                p1, p2, p3 = st.columns(3)
+                with p1:
+                    compact_stat("Card price", eur(item_paid))
+                with p2:
+                    compact_stat("Allocated shipping", eur(shipping), card.get("shipping_allocation_method") or None)
+                with p3:
+                    compact_stat("Landed cost", eur(landed))
 
-                c5, c6 = st.columns(2)
-                c5.metric("CT literal floor", eur(ct_floor))
-                c6.metric("CT robust ask", eur(ct_robust))
-                st.caption(market_status(ct, "CardTrader"))
+                st.markdown('<div class="owned-section-title">Live market</div>', unsafe_allow_html=True)
+                render_price_table(cm, ct, landed)
+                if lowest_ask is not None:
+                    literal_room = None if landed is None else lowest_ask - landed
+                    robust_room = None if landed is None or lowest_robust is None else lowest_robust - landed
+                    st.caption(
+                        f"Lowest literal ask {eur(lowest_ask)} ({signed_eur(literal_room)} vs your landed cost)"
+                        + (f" · lowest robust ask {eur(lowest_robust)} ({signed_eur(robust_room)} vs landed)" if lowest_robust is not None else "")
+                        + ". Active asks are not realised exits."
+                    )
 
-                c7, c8 = st.columns(2)
-                c7.metric("Lowest active floor", eur(lowest_ask))
-                c8.metric("Lowest robust ask", eur(lowest_robust))
-
-                c9, c10 = st.columns(2)
-                c9.metric("Gross room vs literal floor", eur(gross_room))
-                c10.metric("Historical ref. confidence", history["label"])
+                st.markdown('<div class="owned-section-title">Cardmarket history</div>', unsafe_allow_html=True)
+                marks = [
+                    f"Trend {eur(tracked_row.get('trend'))}",
+                    f"1d {eur(tracked_row.get('avg1'))}",
+                    f"7d {eur(tracked_row.get('avg7'))}",
+                    f"30d {eur(tracked_row.get('avg30'))}",
+                ]
+                st.markdown(" · ".join(marks) + f" · **Reference confidence {history['label']}**")
                 spread = history.get("spread_ratio")
                 if spread is not None:
-                    st.caption(f"Cardmarket Trend/1d/7d/30d summary spread: **{spread:.2f}×**. {history['note']}")
+                    st.caption(f"Summary spread {spread:.2f}×. {history['note']}")
                 else:
                     st.caption(history["note"])
-                st.caption("Gross room is before selling fees, outbound shipping and execution slippage; it is not profit.")
 
-                if model_exit is not None:
-                    c11, c12 = st.columns(2)
-                    c11.metric("Modelled net exit", eur(model_exit))
-                    c12.metric("Your profit at modelled exit", eur(model_profit))
-                    st.markdown(f"**Your ROI at modelled exit:** {pct(model_roi)}")
-                    if route.get("best_sell_channel"):
-                        st.caption(f"Modelled exit route: {str(route['best_sell_channel']).replace('_', ' ').title()}")
-                else:
-                    st.caption("No routed net-exit model for this card yet. Current asks are shown as market context only.")
+                if route:
+                    st.markdown('<div class="owned-section-title">Scanner view</div>', unsafe_allow_html=True)
+                    s1, s2 = st.columns(2)
+                    with s1:
+                        compact_stat("EU model value", eur(route.get("eu_fair_value_eur")))
+                    with s2:
+                        compact_stat(
+                            "Scanner acquisition reference",
+                            eur(route.get("best_validated_buy_eur")),
+                            friendly_source(route.get("best_validated_buy_source")),
+                        )
+                    s3, s4 = st.columns(2)
+                    with s3:
+                        compact_stat("Modelled net exit", eur(model_exit), friendly_source(route.get("best_sell_channel")))
+                    with s4:
+                        compact_stat(
+                            "Your result at modelled exit",
+                            signed_eur(model_profit),
+                            signed_pct(model_roi),
+                        )
 
-                with st.expander("Purchase basis"):
+                with st.expander("Purchase details"):
                     st.write({
                         "purchase_date": card.get("purchase_date"),
                         "source": card.get("purchase_source"),
                         "item_paid_eur": item_paid,
-                        "allocated_shipping_eur": as_float(card.get("allocated_shipping_eur")),
+                        "allocated_shipping_eur": shipping,
                         "landed_cost_eur": landed,
                         "shipping_allocation": card.get("shipping_allocation_method"),
                         "finish_rule": card.get("finish_requirement"),
+                        "language": card.get("language"),
+                        "condition": card.get("condition"),
                     })
-                    st.caption("Basket shipping is currently allocated equally per card so item price and landed investment remain separately visible.")
+                    st.caption("Basket shipping is allocated explicitly so the original card price and total invested cost remain separately visible.")
 
-                with st.expander("Market / model detail"):
+                with st.expander("Market evidence"):
                     st.write({
+                        "Cardmarket status": market_status(cm, "Cardmarket"),
+                        "Cardmarket lowest ask": cm_floor,
+                        "Cardmarket robust ask": cm_robust,
+                        "Cardmarket cheapest sample": cm.get("ask_sample_eur"),
+                        "Cardmarket floor-to-robust spread %": as_float(cm.get("floor_to_robust_spread_pct")),
+                        "CardTrader status": market_status(ct, "CardTrader"),
+                        "CardTrader lowest ask": ct_floor,
+                        "CardTrader robust ask": ct_robust,
+                        "CardTrader cheapest sample": ct.get("ask_sample_eur"),
+                        "CardTrader sellers": ct.get("visible_sellers"),
+                        "CardTrader units": ct.get("visible_units"),
+                        "CardTrader floor-to-robust spread %": as_float(ct.get("floor_to_robust_spread_pct")),
                         "Cardmarket trend": as_float(tracked_row.get("trend")),
                         "Cardmarket 1d average": as_float(tracked_row.get("avg1")),
                         "Cardmarket 7d average": as_float(tracked_row.get("avg7")),
                         "Cardmarket 30d average": as_float(tracked_row.get("avg30")),
                         "historical summary confidence": history.get("quality"),
                         "historical summary spread x": history.get("spread_ratio"),
-                        "CM floor-to-robust spread %": as_float(cm.get("floor_to_robust_spread_pct")),
-                        "CT floor-to-robust spread %": as_float(ct.get("floor_to_robust_spread_pct")),
                     })
-                    if route:
-                        st.write({
-                            "EU fair value": as_float(route.get("eu_fair_value_eur")),
-                            "scanner validated buy": as_float(route.get("best_validated_buy_eur")),
-                            "scanner modelled profit": as_float(route.get("net_spread_eur")),
-                            "scanner modelled ROI %": as_float(route.get("net_roi_pct")),
-                            "PCS": as_float(route.get("eu_price_confidence_score")),
-                            "LQS": as_float(route.get("eu_liquidity_score") or route.get("liquidity_score")),
-                            "ECS": as_float(route.get("exit_confidence_score")),
-                            "BOS": as_float(route.get("bridge_opportunity_score")),
-                            "quality gate": route.get("quality_gate_reason"),
-                        })
+
+                if route:
+                    with st.expander("Why this scanner status?"):
+                        st.markdown(
+                            " · ".join(
+                                [
+                                    f"**PCS {eur(None) if as_float(route.get('eu_price_confidence_score')) is None else as_float(route.get('eu_price_confidence_score')):.0f}**" if as_float(route.get('eu_price_confidence_score')) is not None else "**PCS —**",
+                                    f"**LQS {as_float(route.get('eu_liquidity_score') or route.get('liquidity_score')):.0f}**" if as_float(route.get('eu_liquidity_score') or route.get('liquidity_score')) is not None else "**LQS —**",
+                                    f"**ECS {as_float(route.get('exit_confidence_score')):.0f}**" if as_float(route.get('exit_confidence_score')) is not None else "**ECS —**",
+                                    f"**BOS {as_float(route.get('bridge_opportunity_score')):.0f}**" if as_float(route.get('bridge_opportunity_score')) is not None else "**BOS —**",
+                                ]
+                            )
+                        )
+                        st.caption("PCS = price confidence · LQS = liquidity · ECS = exit confidence · BOS = bridge support")
+                        if route.get("quality_gate_reason"):
+                            st.write(route.get("quality_gate_reason"))
                     if prediction:
                         st.caption("Immutable forecast exists for this card.")
 
 st.divider()
 st.caption(
-    "UX rule: cost basis and current comparable market asks are shown before scanner diagnostics. Robust asks and historical summary consistency are diagnostics only; the dashboard does not invent a new BUY/SELL gate."
+    "UX rule: your cost basis and source-by-source market evidence come before scanner diagnostics. Robust asks and historical consistency are diagnostics only; the dashboard does not invent a new BUY/SELL gate."
 )
