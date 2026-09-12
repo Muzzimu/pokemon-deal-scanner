@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import sqlite3, re
+          import sqlite3
           conn=sqlite3.connect('db/pokemon_deal_scanner.sqlite')
           conn.row_factory=sqlite3.Row
           targets=[
@@ -35,10 +35,9 @@ jobs:
           ]
           for name,num in targets:
               rows=conn.execute('''SELECT id_product,name,expansion_name,number FROM products
-                                   WHERE lower(name) LIKE ? AND (number LIKE ? OR number LIKE ? OR number LIKE ?)
-                                   ORDER BY id_product''',
-                                ('%'+name.lower()+'%', num+'/%', '%/'+num, num)).fetchall()
+                                   WHERE lower(name) LIKE ? ORDER BY id_product DESC''',
+                                ('%'+name.lower()+'%',)).fetchall()
               print('\nTARGET',name,num,'COUNT',len(rows))
-              for r in rows[:20]: print(dict(r))
+              for r in rows[:40]: print(dict(r))
           conn.close()
           PY
