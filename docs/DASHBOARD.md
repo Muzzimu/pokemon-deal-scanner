@@ -218,3 +218,8 @@ Owned-card CM/CT refreshes preserve ask-side structure from the same already-fet
 
 Static metadata may enrich the dashboard only through the explicit Cardmarket-product → exact TCGdex ID mapping already used for artwork. Cache release date, rarity/treatment metadata, illustrator, regulation mark, legal flags and variant availability in `data/reference/card_fundamentals.csv`. Never fuzzy-match metadata. This layer is context/research only and does not alter v0.12 fair value, BUY gates or route scoring. Refresh when exact mappings change or manually; it does not need a daily polling cadence.
 
+
+## Bundle market benchmark
+
+The `Bundle market` tab is a separate business diagnostic based on curated comparable bundle listings plus our stored bundle recipes and realised bundle sales. It may show ask, card count, €/card, hero-card prevalence, foil density and disclosed composition. UNKNOWN fields stay unknown, disappeared listings are not treated as sold, and small samples are labelled explicitly. This page never feeds exact-card fair value or BUY logic.
+

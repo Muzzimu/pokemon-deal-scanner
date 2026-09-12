@@ -20,6 +20,9 @@ CARD_IMAGE_PATH = ROOT / "dashboard" / "data" / "card_images.json"
 PROVIDER_USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
 PROVIDER_LIMITS_PATH = ROOT / "data" / "reference" / "provider_limits.csv"
 CARD_FUNDAMENTALS_PATH = ROOT / "data" / "reference" / "card_fundamentals.csv"
+BUNDLE_COMPETITORS_PATH = ROOT / "data" / "business" / "bundle_competitors.csv"
+BUNDLE_RECIPES_PATH = ROOT / "data" / "business" / "bundle_recipes.csv"
+BUNDLE_SALES_PATH = ROOT / "data" / "business" / "bundle_sales.csv"
 
 RESELL_SIGNALS = {"RESELL_TEST"}
 WATCH_SIGNALS = {"WATCH_ONLY"}
@@ -80,6 +83,56 @@ def read_snapshot(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
+
+
+def median_numeric(rows: list[dict], field: str) -> float | None:
+    values = sorted(value for value in (as_float(row.get(field)) for row in rows) if value is not None)
+    if not values:
+        return None
+    middle = len(values) // 2
+    if len(values) % 2:
+        return values[middle]
+    return (values[middle - 1] + values[middle]) / 2.0
+
+
+def bundle_recipe_rows(rows: list[dict]) -> list[dict]:
+    output = []
+    for row in rows:
+        total = as_float(row.get("total_cards"))
+        foils = as_float(row.get("holo_reverse"))
+        output.append({
+            "Bundle": clean_text(row.get("bundle_type")) or "—",
+            "Ask (Adverts)": as_float(row.get("adverts_price_eur")),
+            "Cards": as_int(row.get("total_cards")),
+            "Hero V/ex": as_int(row.get("v_ex")),
+            "Guaranteed icon": as_int(row.get("icon")),
+            "Holo/RH minimum": as_int(row.get("holo_reverse")),
+            "Foil density": (foils / total) if total and foils is not None else None,
+            "Trainers": as_int(row.get("trainers")),
+        })
+    return output
+
+
+def bundle_competitor_rows(rows: list[dict]) -> list[dict]:
+    output = []
+    for row in rows:
+        output.append({
+            "Observed": clean_text(row.get("observed_at")) or "—",
+            "Source": clean_text(row.get("source")) or "—",
+            "Ask": as_float(row.get("ask_price_eur")),
+            "Cards": as_int(row.get("card_count")),
+            "€/card": as_float(row.get("price_per_card_eur")),
+            "Hero hits": as_int(row.get("hero_v_ex_count")),
+            "Holo": as_int(row.get("holo_count")),
+            "Reverse": as_int(row.get("reverse_holo_count")),
+            "Foil density": as_float(row.get("foil_density")),
+            "Language": clean_text(row.get("language_mix")) or "UNKNOWN",
+            "Duplicates": clean_text(row.get("duplicate_policy")) or "UNKNOWN",
+            "Theme": clean_text(row.get("theme")) or "UNKNOWN",
+            "Location": clean_text(row.get("seller_location")) or "—",
+            "Status": clean_text(row.get("status")) or "—",
+        })
+    return output
 
 
 def provider_usage_summary(rows: list[dict], limits: list[dict]) -> list[dict]:
@@ -968,6 +1021,9 @@ provider_usage_rows = read_csv(PROVIDER_USAGE_PATH)
 provider_limits = read_csv(PROVIDER_LIMITS_PATH)
 card_fundamental_rows = read_csv(CARD_FUNDAMENTALS_PATH)
 card_fundamentals_by_pid = {str(r.get("id_product")): r for r in card_fundamental_rows if r.get("id_product")}
+bundle_competitors = read_csv(BUNDLE_COMPETITORS_PATH)
+bundle_recipes = read_csv(BUNDLE_RECIPES_PATH)
+bundle_sales = read_csv(BUNDLE_SALES_PATH)
 conn: sqlite3.Connection | None = None
 
 if db_path.exists():
@@ -1044,7 +1100,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_today, tab_card, tab_health = st.tabs(["Today", "Card detail", "Model health"])
+tab_today, tab_card, tab_bundle, tab_health = st.tabs(["Today", "Card detail", "Bundle market", "Model health"])
 
 with tab_today:
     route_signals = [str(r.get("route_signal") or "").upper() for r in routes]
@@ -1380,6 +1436,84 @@ with tab_card:
             st.dataframe(outcomes, use_container_width=True, hide_index=True)
         else:
             st.caption("No matured outcomes for this card in the current dashboard dataset.")
+
+with tab_bundle:
+    st.subheader("Bundle market")
+    st.caption("Business-market diagnostic only — this does not affect exact-card fair value or BUY logic.")
+
+    competitor_count = len(bundle_competitors)
+    median_ask = median_numeric(bundle_competitors, "ask_price_eur")
+    median_ppc = median_numeric(bundle_competitors, "price_per_card_eur")
+    median_foil = median_numeric(bundle_competitors, "foil_density")
+    hero_known = [as_float(row.get("hero_v_ex_count")) for row in bundle_competitors]
+    hero_known = [value for value in hero_known if value is not None]
+    hero_prevalence = (sum(1 for value in hero_known if value > 0) / len(hero_known) * 100.0) if hero_known else None
+
+    b1, b2, b3, b4 = st.columns(4)
+    b1.metric("Comparable listings", competitor_count)
+    b2.metric("Median ask", format_eur(median_ask))
+    b3.metric("Median €/card", format_eur(median_ppc))
+    b4.metric("Median foil density", format_pct(None if median_foil is None else median_foil * 100.0))
+    if competitor_count < 5:
+        st.info(f"Early benchmark: only {competitor_count} clearly comparable listing{'s' if competitor_count != 1 else ''} stored so far. Treat medians as descriptive, not a market estimate.")
+
+    st.markdown("**Our current recipes**")
+    recipe_view = bundle_recipe_rows(bundle_recipes)
+    if recipe_view:
+        st.dataframe(
+            recipe_view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Ask (Adverts)": st.column_config.NumberColumn(format="€%.2f"),
+                "Foil density": st.column_config.NumberColumn(format="%.0f%%"),
+            },
+        )
+    else:
+        st.caption("No bundle recipes are stored yet.")
+
+    st.markdown("**Comparable market listings**")
+    competitor_view = bundle_competitor_rows(bundle_competitors)
+    if competitor_view:
+        st.dataframe(
+            competitor_view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Ask": st.column_config.NumberColumn(format="€%.2f"),
+                "€/card": st.column_config.NumberColumn(format="€%.2f"),
+                "Foil density": st.column_config.NumberColumn(format="%.0f%%"),
+            },
+        )
+        if hero_prevalence is not None:
+            st.caption(f"Visible hero-card prevalence in the current annotated sample: {hero_prevalence:.0f}%. Composition fields remain UNKNOWN when the listing does not disclose them.")
+    else:
+        st.caption("No comparable competitor listings are stored yet.")
+
+    st.markdown("**Own realised bundle sales**")
+    if bundle_sales:
+        realised = []
+        for row in bundle_sales:
+            realised.append({
+                "Date": clean_text(row.get("date")) or "—",
+                "Channel": clean_text(row.get("platform")) or "—",
+                "Bundle": clean_text(row.get("bundle_type")) or "—",
+                "Qty": as_int(row.get("quantity")),
+                "Revenue": as_float(row.get("item_revenue_eur")),
+                "Net cash": as_float(row.get("net_cash_received_eur")),
+            })
+        st.dataframe(
+            realised,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Revenue": st.column_config.NumberColumn(format="€%.2f"),
+                "Net cash": st.column_config.NumberColumn(format="€%.2f"),
+            },
+        )
+    else:
+        st.caption("No realised bundle sales recorded yet. When sales start, this section becomes the feedback loop between competitor design and our actual sell-through/economics.")
+
 
 with tab_health:
     st.subheader("Provider usage")
