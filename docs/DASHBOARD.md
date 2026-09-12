@@ -208,3 +208,8 @@ Deferred ideas and maturity gates are indexed in `docs/FUTURE_IDEAS.md`. The nex
 `relative strength -> inventory risk -> probability-based expected value`
 
 Keep the dashboard replaceable: if Streamlit later becomes limiting, the underlying scanner/database contracts should allow another UI without changing model semantics.
+
+## Ask-side structure diagnostics
+
+Owned-card CM/CT refreshes preserve ask-side structure from the same already-fetched exact EN/NM/finish-matched rows: depth within +3% and +10% of floor, next distinct ask gap, seller concentration and HHI. The append-only `dashboard/data/owned_depth_history.csv` starts prospective history that cannot be reconstructed reliably later. These fields are display/research diagnostics only; they do not change v0.12 BUY/FV/route logic.
+

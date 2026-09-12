@@ -711,6 +711,34 @@ def render_owned_price_table(row: dict, landed: float | None) -> None:
             samples.append(f"{label} cheapest sample: {sample}")
     if samples:
         st.caption(" · ".join(samples))
+    structures = [
+        value for value in (
+            owned_structure_text(row, "cardmarket", "CM structure"),
+            owned_structure_text(row, "cardtrader", "CT structure"),
+        ) if value
+    ]
+    if structures:
+        st.caption(" | ".join(structures))
+
+
+def owned_structure_text(row: dict, source_name: str, label: str) -> str | None:
+    source = row.get(source_name) or {}
+    if not isinstance(source, dict) or str(source.get("status") or "").upper() != "OK":
+        return None
+    u3, s3 = as_int(source.get("floor_depth_3pct_units")), as_int(source.get("floor_depth_3pct_sellers"))
+    u10, s10 = as_int(source.get("near_floor_10pct_units")), as_int(source.get("near_floor_10pct_sellers"))
+    gap = as_float(source.get("next_distinct_ask_gap_pct"))
+    top1 = as_float(source.get("top1_seller_unit_share_pct"))
+    parts = []
+    if u3 is not None or s3 is not None:
+        parts.append(f"+3% floor {u3 if u3 is not None else '—'}u/{s3 if s3 is not None else '—'}s")
+    if u10 is not None or s10 is not None:
+        parts.append(f"+10% {u10 if u10 is not None else '—'}u/{s10 if s10 is not None else '—'}s")
+    if gap is not None:
+        parts.append(f"next distinct ask +{gap:.1f}%")
+    if top1 is not None:
+        parts.append(f"top seller {top1:.0f}% of units")
+    return f"{label}: " + " · ".join(parts) if parts else None
 
 
 def owned_result_summary(row: dict, landed: float | None) -> tuple[str, float | None, float | None]:

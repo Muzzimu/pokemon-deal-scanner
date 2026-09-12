@@ -13,7 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from deal_scanner.cardmarket_live import ParseBotCardmarketClient, _extract_listing_rows, _listing_price, _summary
+from deal_scanner.cardmarket_live import (
+    ParseBotCardmarketClient, _extract_listing_rows, _listing_price, _summary, _seller_key, _quantity
+)
 from deal_scanner.cardtrader import CardTraderClient, normalize_marketplace
 from deal_scanner.config import load_config, resolve_path
 from deal_scanner.db import blueprint_product_map_for_expansion, expansion_ids_for_products
@@ -22,6 +24,7 @@ from deal_scanner.provider_usage import append_provider_usage
 OWNED_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"
 OUTPUT_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
 USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
+DEPTH_HISTORY_PATH = ROOT / "dashboard" / "data" / "owned_depth_history.csv"
 
 
 def read_owned() -> list[dict]:
@@ -95,17 +98,24 @@ def matches_finish(requirement: str, reverse_value: bool | None) -> tuple[bool, 
 
 
 def ask_diagnostics(rows: list[dict], sample_size: int) -> dict:
-    """Return floor + robust floor from already-fetched comparable asks.
+    """Return floor, robust floor and ask-side structure from already-fetched rows.
 
-    The robust floor is the median of the cheapest N comparable asks. It is a
-    display/research diagnostic only; it does not create an executable exit or BUY.
+    These are diagnostic-only market-structure measures. They do not create a BUY,
+    fair-value override or executable exit.
     """
     summary = _summary(rows, sample_size)
-    prices = sorted(
-        float(price)
-        for row in rows
-        if (price := _listing_price(row)) is not None and float(price) > 0
-    )
+    offers = []
+    for index, row in enumerate(rows):
+        price = _listing_price(row)
+        if price is None or float(price) <= 0:
+            continue
+        offers.append({
+            "price": float(price),
+            "seller": _seller_key(row, index),
+            "quantity": _quantity(row),
+        })
+    offers.sort(key=lambda r: r["price"])
+    prices = [r["price"] for r in offers]
     n = min(max(1, sample_size), len(prices)) if prices else 0
     sample = [round(value, 2) for value in prices[:n]]
     floor = summary.get("floor")
@@ -113,12 +123,86 @@ def ask_diagnostics(rows: list[dict], sample_size: int) -> dict:
     spread_pct = None
     if floor not in (None, 0) and robust is not None:
         spread_pct = round((float(robust) / float(floor) - 1.0) * 100.0, 1)
+
+    def band_stats(multiplier: float) -> tuple[int, int]:
+        if not offers:
+            return 0, 0
+        ceiling = offers[0]["price"] * multiplier
+        selected = [r for r in offers if r["price"] <= ceiling + 1e-9]
+        return sum(int(r["quantity"]) for r in selected), len({r["seller"] for r in selected})
+
+    floor3_units, floor3_sellers = band_stats(1.03)
+    near10_units, near10_sellers = band_stats(1.10)
+    next_distinct_gap_pct = None
+    if offers:
+        base = offers[0]["price"]
+        for row in offers[1:]:
+            if row["price"] > base + 1e-9:
+                next_distinct_gap_pct = round((row["price"] / base - 1.0) * 100.0, 1)
+                break
+
+    seller_units: dict[str, int] = {}
+    for row in offers:
+        seller_units[row["seller"]] = seller_units.get(row["seller"], 0) + int(row["quantity"])
+    total_units = sum(seller_units.values())
+    shares = sorted((units / total_units for units in seller_units.values()), reverse=True) if total_units else []
+    top1 = round(shares[0] * 100.0, 1) if shares else None
+    top3 = round(sum(shares[:3]) * 100.0, 1) if shares else None
+    hhi = round(sum(share * share for share in shares) * 10000.0, 0) if shares else None
+
     return {
         **summary,
         "robust_sample_size": n,
         "ask_sample_eur": sample,
         "floor_to_robust_spread_pct": spread_pct,
+        "floor_depth_3pct_units": floor3_units,
+        "floor_depth_3pct_sellers": floor3_sellers,
+        "near_floor_10pct_units": near10_units,
+        "near_floor_10pct_sellers": near10_sellers,
+        "next_distinct_ask_gap_pct": next_distinct_gap_pct,
+        "top1_seller_unit_share_pct": top1,
+        "top3_seller_unit_share_pct": top3,
+        "seller_hhi": hhi,
     }
+
+
+def append_depth_history(cards: list[dict], observed_at: str) -> None:
+    fields = [
+        "observed_at_utc", "id_product", "name", "provider", "status",
+        "floor_eur", "robust_floor_eur", "visible_sellers", "visible_units",
+        "floor_depth_3pct_units", "floor_depth_3pct_sellers",
+        "near_floor_10pct_units", "near_floor_10pct_sellers",
+        "next_distinct_ask_gap_pct", "top1_seller_unit_share_pct",
+        "top3_seller_unit_share_pct", "seller_hhi",
+    ]
+    existing = []
+    if DEPTH_HISTORY_PATH.exists():
+        with DEPTH_HISTORY_PATH.open(newline="", encoding="utf-8") as fh:
+            existing = [dict(row) for row in csv.DictReader(fh)]
+    keys = {(observed_at, str(card.get("id_product")), provider) for card in cards for provider in ("cardmarket", "cardtrader")}
+    existing = [
+        row for row in existing
+        if (row.get("observed_at_utc"), str(row.get("id_product")), row.get("provider")) not in keys
+    ]
+    for card in cards:
+        for provider in ("cardmarket", "cardtrader"):
+            source = card.get(provider) or {}
+            row = {
+                "observed_at_utc": observed_at,
+                "id_product": card.get("id_product"),
+                "name": card.get("name"),
+                "provider": provider.upper(),
+                "status": source.get("status"),
+            }
+            for field in fields[5:]:
+                row[field] = source.get(field)
+            existing.append(row)
+    existing.sort(key=lambda r: (r.get("observed_at_utc", ""), str(r.get("id_product", "")), r.get("provider", "")))
+    DEPTH_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with DEPTH_HISTORY_PATH.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(existing)
 
 
 def ct_market(conn: sqlite3.Connection, cfg: dict, owned: list[dict]) -> dict[str, dict]:
@@ -178,6 +262,14 @@ def ct_market(conn: sqlite3.Connection, cfg: dict, owned: list[dict]) -> dict[st
                 "visible_sellers": diag["sellers"],
                 "visible_units": diag["units"],
                 "visible_offer_rows": diag["rows"],
+                "floor_depth_3pct_units": diag["floor_depth_3pct_units"],
+                "floor_depth_3pct_sellers": diag["floor_depth_3pct_sellers"],
+                "near_floor_10pct_units": diag["near_floor_10pct_units"],
+                "near_floor_10pct_sellers": diag["near_floor_10pct_sellers"],
+                "next_distinct_ask_gap_pct": diag["next_distinct_ask_gap_pct"],
+                "top1_seller_unit_share_pct": diag["top1_seller_unit_share_pct"],
+                "top3_seller_unit_share_pct": diag["top3_seller_unit_share_pct"],
+                "seller_hhi": diag["seller_hhi"],
                 "finish_verified": True,
             }
         elif finish_unknown_by_pid[pid]:
@@ -245,7 +337,15 @@ def cm_market(cfg: dict, owned: list[dict]) -> dict[str, dict]:
                     "visible_offer_rows": diag["rows"],
                     "visible_sellers": diag["sellers"],
                     "visible_units": diag["units"],
-                    "finish_verified": True,
+                    "floor_depth_3pct_units": diag["floor_depth_3pct_units"],
+                "floor_depth_3pct_sellers": diag["floor_depth_3pct_sellers"],
+                "near_floor_10pct_units": diag["near_floor_10pct_units"],
+                "near_floor_10pct_sellers": diag["near_floor_10pct_sellers"],
+                "next_distinct_ask_gap_pct": diag["next_distinct_ask_gap_pct"],
+                "top1_seller_unit_share_pct": diag["top1_seller_unit_share_pct"],
+                "top3_seller_unit_share_pct": diag["top3_seller_unit_share_pct"],
+                "seller_hhi": diag["seller_hhi"],
+                "finish_verified": True,
                 }
             elif finish_unknown:
                 result[str(pid)] = {
@@ -305,12 +405,14 @@ def main() -> int:
             "cardtrader": ct.get(pid, {"status": "NOT_QUERIED"}),
         })
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    append_depth_history(cards, now)
     OUTPUT_PATH.write_text(
         json.dumps({
-            "schema_version": 2,
+            "schema_version": 3,
             "generated_at_utc": now,
             "purpose": "owned-card decision support; asks are competition references, not realised exits",
             "robust_ask_note": "robust_floor_eur is the median of the cheapest comparable asks already fetched; diagnostic only",
+            "depth_note": "ask-side depth/concentration fields are prospective diagnostics only and do not alter BUY/FV logic",
             "cards": cards,
         }, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n",
         encoding="utf-8",
