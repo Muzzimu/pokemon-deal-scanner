@@ -85,16 +85,28 @@ For each owned card the first screen shows:
 - language, condition and finish-matching rule;
 - **item price actually paid**;
 - **allocated landed cost** including basket shipping allocation;
-- lowest currently validated comparable **Cardmarket EN/NM ask** when available;
-- lowest currently validated comparable **CardTrader EN/NM ask** when available;
-- lowest comparable active ask and the gross room versus landed cost;
+- current exact-comparable **Cardmarket EN/NM literal floor** when available;
+- current exact-comparable **CardTrader EN/NM literal floor** when available;
+- a **robust ask** for each source when available, defined as the median of the cheapest three already-fetched comparable asks;
+- the lowest comparable active floor, lowest robust ask and gross room versus landed cost;
+- **historical reference confidence**, a display-only consistency diagnostic derived from Cardmarket Trend/1d/7d/30d summary marks;
 - routed model net exit, owner-specific modelled profit and owner-specific ROI when a routed net exit exists.
 
-Active asks are explicitly labelled as competition references, not realised exits. Gross room is before selling fees, outbound postage and execution slippage.
+Active asks are explicitly labelled as competition references, not realised exits. The literal floor can be an edge-case seller/copy; the robust ask is intended to show whether the next few comparable asks support that floor. Neither is a realised sale price. Gross room is before selling fees, outbound postage and execution slippage.
+
+Historical reference confidence is deliberately narrow. It does **not** claim Cardmarket's historical sale series is English/NM/finish-clean. The dashboard uses the spread among positive Trend/1d/7d/30d summary marks only: fewer than three marks = `INSUFFICIENT`; max/min ≥2.0× = `LOW`; max/min ≥1.35× = `MEDIUM`; otherwise `HIGH`. This is a market-history warning/diagnostic, not a new fair value, score or BUY gate.
 
 The owned-card acquisition ledger is `data/reference/owned_resale_cards.csv`. Basket shipping is currently allocated equally per card while the original item price remains separately visible. This makes the allocation transparent and reversible rather than hiding it inside one opaque cost number.
 
 The independent workflow `.github/workflows/owned_market_refresh.yml` refreshes Cardmarket/CardTrader comparable asks separately from the core scanner. A comparable ask must match exact product identity, English, NM/raw status and the stored finish rule. If finish cannot be verified, the dashboard withholds the floor and shows `VERIFY_FINISH` instead.
+
+Code-only edits to `scripts/refresh_owned_market.py` do not automatically run the paid live refresh. They are validated by CI and take effect on the next normal/manual refresh. A change to the owned-card ledger still triggers an immediate refresh because a newly bought card benefits from a current market check. This prevents avoidable Parse/Cardmarket credit use during development.
+
+### Cross-price research
+
+`dashboard/pages/2_Cross-price_research.py` is a research-only comparison surface balanced across Cardmarket 30-day reference-value bands. It does not alter v0.12 BUY signals, fair values or route gates.
+
+Alongside screening acquisition, absolute euro headroom and percentage gap, the table shows **historical reference confidence** and the max/min summary spread. This makes cards such as thin vintage holos visibly different from cards whose Trend/1d/7d/30d marks agree. A low-confidence historical reference should prompt investigation rather than be interpreted as a precise fair value.
 
 ### Card detail
 
@@ -136,6 +148,7 @@ For `RESEARCH_WATCH` cards it shows the available research-market observations a
 - Discovery candidates must remain clearly labelled as pre-route sourcing evidence.
 - Missing files/data should degrade to informative empty states, not fabricated values.
 - Market-profile fields are diagnostics only and cannot silently change scanner scores/signals.
+- Robust asks and historical-reference confidence are diagnostics only and cannot silently change scanner scores/signals.
 - AI/LLM logic is not part of this dashboard.
 
 ## Run locally
