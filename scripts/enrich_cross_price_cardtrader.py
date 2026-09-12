@@ -27,6 +27,44 @@ def panel(conn, cfg: dict) -> list[dict]:
     return build_cross_price_research(scored_rows(latest_rows_with_history(conn), cfg), cfg)
 
 
+def enrich_exact_identity(conn, rows: list[dict]) -> None:
+    """Fill missing set/number only when CardTrader exact mapping resolves uniquely."""
+    for row in rows:
+        if row.get("expansion_name") and row.get("number"):
+            row["identity_source"] = "CARDMARKET_CATALOG"
+            continue
+        pid = int(row["id_product"])
+        mapped = conn.execute(
+            """
+            SELECT DISTINCT
+                   trim(coalesce(b.expansion_name,'')) AS expansion_name,
+                   trim(coalesce(b.collector_number,'')) AS collector_number,
+                   trim(coalesce(b.version,'')) AS version
+            FROM cardtrader_blueprint_map m
+            JOIN cardtrader_blueprints b ON b.blueprint_id=m.blueprint_id
+            WHERE m.id_product=?
+            """,
+            (pid,),
+        ).fetchall()
+        exact = {
+            (str(r["expansion_name"] or "").strip(), str(r["collector_number"] or "").strip())
+            for r in mapped
+            if str(r["expansion_name"] or "").strip() and str(r["collector_number"] or "").strip()
+        }
+        if len(exact) == 1:
+            expansion_name, number = next(iter(exact))
+            if not row.get("expansion_name"):
+                row["expansion_name"] = expansion_name
+            if not row.get("number"):
+                row["number"] = number
+            versions = {str(r["version"] or "").strip() for r in mapped if str(r["version"] or "").strip()}
+            if len(versions) == 1:
+                row["cardtrader_version"] = next(iter(versions))
+            row["identity_source"] = "CARDTRADER_EXACT_MAPPING"
+        else:
+            row["identity_source"] = "UNRESOLVED" if not (row.get("expansion_name") or row.get("number")) else "PARTIAL_CARDMARKET_CATALOG"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=str(ROOT / "config.yaml"))
@@ -88,6 +126,7 @@ def main() -> int:
         )
 
         selected = panel(conn, cfg)
+        enrich_exact_identity(conn, selected)
         write_csv(output_path, selected, CROSS_PRICE_FIELDS)
     finally:
         conn.close()

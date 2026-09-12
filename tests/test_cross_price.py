@@ -60,3 +60,17 @@ def test_validated_acquisition_ranks_ahead_of_generic_within_band():
     assert len(selected) == 1
     assert selected[0]["id_product"] == 2
     assert selected[0]["acquisition_basis"] == "VALIDATED_EN_NM"
+
+
+def test_acquisition_source_tracks_cardtrader_vs_cardmarket_generic():
+    cfg = {
+        "rules": {"min_product_age_days_for_flip_signal": 14},
+        "cross_price_research": {"candidates_per_band": 2},
+    }
+    validated = row(10, 40.0, 20.0, validated=25.0)
+    validated["ct_en_nm_floor"] = 25.0
+    generic = row(11, 40.0, 20.0)
+    selected = build_cross_price_research([validated, generic], cfg)
+    by_id = {r["id_product"]: r for r in selected}
+    assert by_id[10]["screening_acquisition_source"] == "CARDTRADER_EN_NM"
+    assert by_id[11]["screening_acquisition_source"] == "CARDMARKET_GENERIC_LOW"

@@ -20,8 +20,9 @@ COMMON_FIELDS = [
 
 CROSS_PRICE_FIELDS = COMMON_FIELDS + [
     "reference_band", "reference_value_eur", "reference_basis",
-    "screening_acquisition_eur", "acquisition_basis", "gross_headroom_eur",
-    "friction_budget_eur", "cross_price_gap_pct", "research_state",
+    "screening_acquisition_eur", "screening_acquisition_source", "acquisition_basis",
+    "gross_headroom_eur", "friction_budget_eur", "cross_price_gap_pct", "research_state",
+    "identity_source", "cardtrader_version",
 ]
 
 

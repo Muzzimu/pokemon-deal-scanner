@@ -105,12 +105,31 @@ def build_cross_price_research(rows: list[dict], cfg: dict) -> list[dict]:
         acquisition_basis = "VALIDATED_EN_NM" if validated is not None else "CARDMARKET_GENERIC_LOW_SCREENING_ONLY"
         research_state = "READY_FOR_ROUTE_ECONOMICS" if validated is not None else "NEEDS_VALIDATED_ACQUISITION"
 
+        def numeric(value):
+            try:
+                return None if value in (None, "") else float(value)
+            except (TypeError, ValueError):
+                return None
+
+        cm_floor = numeric(row.get("cm_en_nm_floor"))
+        ct_floor = numeric(row.get("ct_en_nm_floor"))
+        if validated is None:
+            acquisition_source = "CARDMARKET_GENERIC_LOW"
+        else:
+            matches = []
+            if cm_floor is not None and abs(cm_floor - screening_price) < 0.005:
+                matches.append("CARDMARKET_EN_NM")
+            if ct_floor is not None and abs(ct_floor - screening_price) < 0.005:
+                matches.append("CARDTRADER_EN_NM")
+            acquisition_source = "+".join(matches) if matches else "VALIDATED_EN_NM_SOURCE_UNRESOLVED"
+
         row.update(
             {
                 "reference_band": band,
                 "reference_value_eur": round(reference, 2),
                 "reference_basis": "CARDMARKET_AVG30_DIAGNOSTIC",
                 "screening_acquisition_eur": round(screening_price, 2),
+                "screening_acquisition_source": acquisition_source,
                 "acquisition_basis": acquisition_basis,
                 "gross_headroom_eur": round(headroom, 2),
                 "friction_budget_eur": round(headroom, 2),

@@ -125,8 +125,11 @@ for row in view:
     comparison.append(
         {
             "Card": short_name(row.get("name")),
+            "Set": row.get("expansion_name") or "—",
+            "No.": row.get("number") or "—",
             "Band": row.get("reference_band"),
             "Screening acquisition": as_float(row.get("screening_acquisition_eur")),
+            "Buy source": str(row.get("screening_acquisition_source") or "UNKNOWN").replace("_", " "),
             "Acquisition evidence": compact_basis(row.get("acquisition_basis")),
             "30d reference": as_float(row.get("reference_value_eur")),
             "Screening headroom": as_float(row.get("gross_headroom_eur")),

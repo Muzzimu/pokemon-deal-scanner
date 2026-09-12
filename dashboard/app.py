@@ -115,13 +115,42 @@ def short_name(value) -> str:
 def card_context(row: dict) -> str:
     bits = []
     if clean_text(row.get("expansion_name")):
-        bits.append(str(row["expansion_name"]))
+        bits.append(f"Set: {row['expansion_name']}")
     if clean_text(row.get("number")):
-        bits.append(f"#{row['number']}")
-    if bits:
-        return " · ".join(bits)
+        bits.append(f"No. {row['number']}")
+    if clean_text(row.get("cardtrader_version")):
+        bits.append(f"Variant: {row['cardtrader_version']}")
+    if clean_text(row.get("rarity")):
+        bits.append(f"Rarity: {row['rarity']}")
     pid = clean_text(row.get("id_product"))
-    return f"Cardmarket ID {pid}" if pid else "Exact set/number not available in snapshot"
+    if pid:
+        bits.append(f"Cardmarket ID {pid}")
+    return " · ".join(bits) if bits else "Exact set/number not available in snapshot"
+
+
+def acquisition_source_text(row: dict) -> str:
+    explicit = (clean_text(row.get("screening_acquisition_source")) or "").upper()
+    labels = {
+        "CARDTRADER_EN_NM": "CardTrader — English/NM ask",
+        "CARDMARKET_EN_NM": "Cardmarket — English/NM floor",
+        "CARDMARKET_EN_NM+CARDTRADER_EN_NM": "Cardmarket + CardTrader — same English/NM floor",
+        "CARDTRADER_EN_NM+CARDMARKET_EN_NM": "Cardmarket + CardTrader — same English/NM floor",
+        "CARDMARKET_GENERIC_LOW": "Cardmarket — generic low (screening only)",
+        "VALIDATED_EN_NM_SOURCE_UNRESOLVED": "Validated EN/NM source not retained",
+    }
+    if explicit in labels:
+        return labels[explicit]
+    buy = as_float(row.get("best_validated_sourcing_price"))
+    cm = as_float(row.get("cm_en_nm_floor"))
+    ct = as_float(row.get("ct_en_nm_floor"))
+    if buy is not None:
+        if ct is not None and abs(ct - buy) < 0.005 and not (cm is not None and abs(cm - buy) < 0.005):
+            return "CardTrader — English/NM ask"
+        if cm is not None and abs(cm - buy) < 0.005 and not (ct is not None and abs(ct - buy) < 0.005):
+            return "Cardmarket — English/NM floor"
+        if cm is not None and ct is not None and abs(cm - buy) < 0.005 and abs(ct - buy) < 0.005:
+            return "Cardmarket + CardTrader — same English/NM floor"
+    return "Source not retained in this snapshot"
 
 
 def signal_label(signal: str | None) -> str:
@@ -363,8 +392,11 @@ def route_summary_rows(rows: list[dict]) -> list[dict]:
 def discovery_summary_rows(rows: list[dict]) -> list[dict]:
     return [{
         "Card": short_name(row.get("name")),
+        "Set": clean_text(row.get("expansion_name")) or "—",
+        "No.": clean_text(row.get("number")) or "—",
         "Scanner status": clean_text(row.get("status")) or "—",
         "Candidate buy": as_float(row.get("best_validated_sourcing_price")),
+        "Buy source": acquisition_source_text(row),
         "30d average": as_float(row.get("avg30")),
         "Gap %": as_float(row.get("gap_pct")),
         "Deal score": as_float(row.get("deal_score")),
@@ -723,6 +755,8 @@ with tab_card:
                 c2.metric("30d average", format_eur(card.get("avg30")))
                 c3.metric("Gap", format_pct(card.get("gap_pct")))
                 c4.metric("Deal score", format_score(card.get("deal_score")))
+                st.markdown(f"**Candidate buy source:** {acquisition_source_text(card)}")
+                st.caption("Candidate buy is a source ask/floor, not a landed cost. Shipping, fees and Ireland eligibility still need route validation unless explicitly stated otherwise.")
                 sellers = as_int(card.get("ct_visible_sellers"))
                 units = as_int(card.get("ct_visible_units"))
                 supply_bits = []
