@@ -213,15 +213,43 @@ Starting maturity gates:
 
 All features remain diagnostic unless chronological walk-forward validation demonstrates incremental out-of-sample value.
 
+### Execution friction and route-level contribution economics
+
+See issue #11: add a future **route-level execution economics** layer so gross spread is never confused with realistic contribution profit.
+
+For each candidate exit route, estimate:
+
+`net_exit_proceeds = sale_price + shipping_collected - platform/payment_fees - seller_shipping_cost - packaging_cost - FX_cost - expected_execution_loss`
+
+and:
+
+`net_contribution = net_exit_proceeds - landed_acquisition_cost`
+
+Model routes separately rather than using one blended fee assumption. Candidate routes include Adverts/local collection, eBay by relevant destination, CardTrader Direct/Zero, Cardmarket resale where appropriate, other validated local channels, bundle inventory, hold/no-action.
+
+Keep dated/configurable postage, marketplace-fee and FX tables. Distinguish shipping paid by the buyer from shipping absorbed by the seller. Do not hard-code temporary examples such as a universal 2.5% FX haircut or specific An Post rates.
+
+Execution risk should eventually use separate event probabilities and severities for loss, damage, return, partial refund, chargeback and cancellation rather than one arbitrary `loss_probability × sale_price` shortcut. Preserve route, destination, value band and tracked/untracked context.
+
+For low-value singles and bundles, keep **financial contribution** separate from optional **operational contribution after handling/labour cost**. Handling inputs may include photography/scanning, listing, messaging, picking/sleeving, packing and postage/admin time. Labour assumptions must remain configurable rather than invented.
+
+A future routing layer may compare **individual sale vs local sale vs CardTrader/eBay/Cardmarket vs bundle inventory vs hold**. A cheap single with poor individual economics may still be a useful bundle component, so single-card and bundle economics must remain separate.
+
+Do not hard-code illustrative thresholds such as €15 tracking cutoffs, €1.50 minimum contribution, 15% minimum ROI or assumed tracked/untracked loss rates. Any later thresholds should be configurable and preferably calibrated from realised outcomes.
+
+Persist realised route economics when available: gross sale price, shipping collected, platform/payment fees, shipping paid, packaging, FX, refund/return/loss events, realised net proceeds, realised contribution and listing-to-sale duration. Compare projected vs realised economics chronologically.
+
+This layer should be a **prerequisite for issue #10 capital allocation**: portfolio optimisation should consume realistic route-level net contribution, not paper gross profit. Rich route diagnostics may still remain informational if they are not validated strongly enough for automated execution.
+
 ### Portfolio capital velocity and inventory allocation
 
-See issue #10: add a future **portfolio / inventory allocation** layer after survival, inventory-risk and probability-based EV are mature enough to support it.
+See issue #10: add a future **portfolio / inventory allocation** layer after route-level contribution economics from issue #11, survival, inventory-risk and probability-based EV are mature enough to support it.
 
 Core principle: a deal should not be judged only by margin or ROI. A high-margin card that ties up capital for months can be a worse use of limited bankroll than a smaller-margin card that turns repeatedly. Track **capital-days consumed** and **capital velocity** explicitly.
 
 Candidate portfolio diagnostics:
 
-- expected net profit;
+- expected net contribution from issue #11;
 - expected / median time-to-sale;
 - `P(sale <= 7d/30d/90d)`;
 - expected capital-days tied up;
