@@ -20,9 +20,10 @@ from deal_scanner.scrapebadger_research import (
 
 
 WATCHLIST = ROOT / "data" / "reference" / "ebay_watchlist.csv"
-DB_PATH = ROOT / "db" / "pokemon_deal_scanner.sqlite"
+DB_PATH = ROOT / "db" / "scrapebadger_research.sqlite"
 OUTPUT = ROOT / "output" / "ebay_completed_candidates_scrapebadger.csv"
 STATUS = ROOT / "output" / "scrapebadger_ebay_status.json"
+PUBLIC_FIELDS = [field for field in EBAY_COMPLETED_FIELDS if field != "seller_name"]
 
 # Keep the first pilot deliberately small. These three domains cover local Ireland,
 # one large continental-EU market, and global/US context without duplicating the
@@ -55,7 +56,7 @@ def main() -> int:
     client = ScrapeBadgerClient()
 
     if not client.configured:
-        write_csv(OUTPUT, [], EBAY_COMPLETED_FIELDS)
+        write_csv(OUTPUT, [], PUBLIC_FIELDS)
         write_status({
             "source": "SCRAPEBADGER_EBAY_COMPLETED",
             "status": "UNAVAILABLE",
@@ -81,7 +82,7 @@ def main() -> int:
                     per_page=60,
                     sort_by="newly_listed",
                 )
-            except Exception as exc:  # provider outage/rate-limit must not poison daily scan
+            except Exception as exc:  # provider outage/rate-limit must not poison research collection
                 errors.append({
                     "id_product": watch.get("id_product"),
                     "domain": domain,
@@ -105,7 +106,7 @@ def main() -> int:
     conn = connect(DB_PATH)
     inserted = persist_ebay_completed(conn, rows)
     conn.close()
-    write_csv(OUTPUT, rows, EBAY_COMPLETED_FIELDS)
+    write_csv(OUTPUT, rows, PUBLIC_FIELDS)
 
     status = "OK" if not errors else ("DEGRADED" if rows else "UNAVAILABLE")
     write_status({
@@ -122,6 +123,7 @@ def main() -> int:
         "errors": errors,
         "role": "EBAY_COMPLETED_CANDIDATE",
         "valuation_weight": 0,
+        "storage": "isolated research database",
     })
     print(
         f"ScrapeBadger eBay completed pilot: status={status} requests={requests_made} "
