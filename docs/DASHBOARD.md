@@ -12,7 +12,7 @@ The dashboard is a display layer only. `main`, SQLite, deterministic Python, and
 
 ### Local mode
 
-If `db/pokemon_deal_scanner.sqlite` exists, the dashboard opens it read-only and reads the current scanner outputs, including `output/market_routes.csv` and `output/top_flips.csv`.
+If `db/pokemon_deal_scanner.sqlite` exists, the dashboard opens it read-only and reads current scanner outputs including `output/market_routes.csv`, `output/market_signals.csv`, `output/market_quality.csv` and `output/top_flips.csv`.
 
 ### Hosted mode
 
@@ -24,7 +24,7 @@ The daily GitHub Action generates this snapshot after a successful scanner run a
 
 The hosted snapshot contains market/model fields only. It intentionally excludes secrets, personal inventory, seller-level data, API tokens and mutable scanner state.
 
-Snapshot schema v2 adds a capped `discovery_candidates` surface from `top_flips.csv` plus richer route-quality labels/reasons. These are presentation inputs only; no dashboard code recalculates scanner decisions.
+Snapshot schema v3 adds market-profile diagnostics to routed cards by joining existing `market_signals.csv` and `market_quality.csv` evidence. These fields explain current market state; they do not recalculate fair value, scores or route decisions.
 
 ## Current screens
 
@@ -36,9 +36,23 @@ The Today screen is the primary decision-review surface.
 - counts of existing `RESELL_TEST`, `WATCH_ONLY` and evidence/revalidation signals;
 - **Priority review** cards showing validated buy, best modeled net exit, net spread, ROI, EU fair value and PCS/LQS/ECS/BOS;
 - filters by scanner route signal, price band and card-name search;
-- a simplified **All routed cards** table, with `NO_EDGE` hidden by default but available on demand;
 - a broader **Discovery queue** sourced from `top_flips.csv` and explicitly labelled as pre-route sourcing evidence, not a final resale recommendation;
-- immutable forecasts moved into an expandable audit view rather than dominating the main screen.
+- full routed-card and raw-field views available on demand.
+
+Each routed card now has a **Market profile** diagnostic block:
+
+- **Trend** — existing market-signal label plus Cardmarket 30-day move when available;
+- **Trend confidence** — existing market-signal confidence and evidence coverage count;
+- **Transaction velocity** — TCGplayer 30d/90d transaction counts plus tracked eBay sale signals when available;
+- **Exact supply** — live Cardmarket EN/NM seller/unit depth when present, tracked eBay live listings, and exact TCGplayer seller/quantity depth;
+- **Volatility / dispersion** — EU and US cross-source price dispersion.
+
+Important interpretation limits:
+
+- trend confidence is evidence-coverage confidence, not a promise of future price direction;
+- tracked eBay sale signals can include conservative inferred quick-sale evidence and are labelled accordingly;
+- EU/US dispersion is cross-source price dispersion, not yet a full historical realised-sale volatility model;
+- none of these diagnostics creates a new BUY gate.
 
 The dashboard may reorder existing signals for readability, but it must never promote, downgrade or manufacture a signal.
 
@@ -48,6 +62,7 @@ The dashboard may reorder existing signals for readability, but it must never pr
 - EU fair value and validated buy;
 - Deal Score and route signal;
 - EU PCS, EU LQS, ECS, BOS;
+- expanded Market profile diagnostics;
 - simplified current route evidence plus expandable raw route fields;
 - latest matured outcomes available for the selected card.
 
@@ -70,6 +85,7 @@ The dashboard may reorder existing signals for readability, but it must never pr
 - Do not include secrets, user inventory, seller-level/private data, or API credentials in the hosted snapshot.
 - Discovery candidates must remain clearly labelled as pre-route sourcing evidence.
 - Missing files/data should degrade to informative empty states, not fabricated values.
+- Market-profile fields are diagnostics only and cannot silently change scanner scores/signals.
 - AI/LLM logic is not part of this dashboard.
 
 ## Run locally
@@ -111,13 +127,10 @@ python scripts/export_dashboard_snapshot.py
 
 This replaces only `dashboard/data/dashboard_snapshot.json`.
 
-## Next UI increments
+## Future UI / analytics
 
-Add only when they improve decisions without duplicating scanner logic:
+Deferred ideas and maturity gates are indexed in `docs/FUTURE_IDEAS.md`. The next analytics sequence is intentionally deferred until enough outcomes mature:
 
-1. source-health/freshness badges and clearer stale/degraded warnings;
-2. charts for forecast calibration and matured outcomes;
-3. experience-store cohort/comparable-case panels after maturity gates are met;
-4. business/inventory views only if a separate privacy-safe design is agreed first.
+`relative strength -> inventory risk -> probability-based expected value`
 
 Keep the dashboard replaceable: if Streamlit later becomes limiting, the underlying scanner/database contracts should allow another UI without changing model semantics.
