@@ -1,0 +1,10 @@
+query_id,id_product,search_query,required_tokens,excluded_tokens,language,query_kind,catalog_id,max_detail_rows,notes
+zeraora_gg42,691922,"Zeraora VMAX GG42/GG70 Crown Zenith","zeraora|gg42","japanese|korean|chinese|psa|graded|slab",en,exact,4875,1,"Exact CRZ GG42 pilot; category-filtered single-card search"
+palkia_gg67,691947,"Origin Forme Palkia VSTAR GG67 Crown Zenith","palkia|gg67","vstar universe|259 172|japanese|korean|chinese|psa|graded|slab",en,exact,4875,1,"Exact CRZ GG67 pilot; fuzzy-search stress case"
+dragonite_pgo076,665687,"Dragonite V 076/078 Pokemon GO","dragonite|076","049|japanese|korean|chinese|psa|graded|slab",en,exact,4875,1,"Exact Pokemon GO 076/078 pilot"
+pikachu_swsh286,,"Pikachu VMAX SWSH286","pikachu|swsh286","jumbo|japanese|korean|chinese|psa|graded|slab",en,exact,4875,1,"Control query for promo/jumbo/language ambiguity; research only"
+gengar_fossil_5_62,,"Gengar 5/62 Fossil","gengar|5 62","psa|graded|slab|japanese|korean|chinese",en,exact,4875,1,"Vintage exact-print stress case; research only"
+bundle_50_cards,,"50 pokemon cards","pokemon",,any,bundle,4879,0,"Bundle-market benchmark query"
+bundle_kids,,"pokemon cards kids bundle","pokemon",,any,bundle,4879,0,"Kid-focused bundle benchmark query"
+lot_cards,,"pokemon cards lot","pokemon",,any,lot,4879,0,"General lot discovery benchmark"
+bundle_generic,,"pokemon card bundle","pokemon",,any,bundle,4879,0,"General bundle discovery benchmark"
