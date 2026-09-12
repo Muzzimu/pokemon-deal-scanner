@@ -1,0 +1,86 @@
+name: ScrapeBadger Research Pilot
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Research collection runs after the core daily scanner. 08:31 UTC is always
+    # after the intended 07:00 Europe/Dublin production run in both GMT and IST.
+    - cron: '31 8 * * *'
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.12'
+  PYTHONPATH: src
+  SCRAPEBADGER_API_KEY: ${{ secrets.SCRAPEBADGER_API_KEY }}
+
+concurrency:
+  group: scrapebadger-research-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test research-source guardrails
+        run: pytest -q tests/test_scrapebadger_research.py
+
+      - name: Restore ScrapeBadger research history
+        uses: actions/cache/restore@v4
+        with:
+          path: db/scrapebadger_research.sqlite
+          key: scrapebadger-research-db-${{ github.run_id }}
+          restore-keys: |
+            scrapebadger-research-db-
+
+      - name: Collect eBay completed research evidence
+        run: python scripts/run_scrapebadger_ebay_completed.py
+
+      - name: Collect Vinted discovery and listing-state research
+        run: python scripts/run_scrapebadger_vinted.py
+
+      - name: Verify research database
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('db/scrapebadger_research.sqlite')
+          if not path.exists():
+              raise SystemExit('research database was not created')
+          conn = sqlite3.connect(path)
+          result = conn.execute('PRAGMA integrity_check').fetchone()[0]
+          conn.close()
+          if result != 'ok':
+              raise SystemExit(f'SQLite integrity_check failed: {result}')
+          print('ScrapeBadger research SQLite integrity_check: ok')
+          PY
+
+      - name: Save ScrapeBadger research history
+        uses: actions/cache/save@v4
+        with:
+          path: db/scrapebadger_research.sqlite
+          key: scrapebadger-research-db-${{ github.run_id }}
+
+      - name: Upload research outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrapebadger-research-${{ github.run_id }}
+          path: |
+            output/ebay_completed_candidates_scrapebadger.csv
+            output/vinted_candidates.csv
+            output/scrapebadger_ebay_status.json
+            output/scrapebadger_vinted_status.json
+          retention-days: 30
+          if-no-files-found: warn
