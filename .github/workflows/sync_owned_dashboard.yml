@@ -1,0 +1,88 @@
+name: Sync owned cards to dashboard
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'data/reference/owned_resale_cards.csv'
+      - 'data/reference/tracked_review_cards.csv'
+      - '.github/workflows/sync_owned_dashboard.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync tracked owned identities into hosted snapshot
+        run: |
+          python - <<'PY'
+          import csv
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          snapshot_path = Path('dashboard/data/dashboard_snapshot.json')
+          tracked_path = Path('data/reference/tracked_review_cards.csv')
+          if not snapshot_path.exists() or not tracked_path.exists():
+              raise SystemExit('required dashboard snapshot or tracked-card file is missing')
+
+          snapshot = json.loads(snapshot_path.read_text(encoding='utf-8'))
+          with tracked_path.open(newline='', encoding='utf-8') as fh:
+              tracked_source = [dict(r) for r in csv.DictReader(fh)]
+
+          existing = {
+              str(r.get('id_product') or '').strip(): dict(r)
+              for r in (snapshot.get('tracked_cards') or [])
+              if str(r.get('id_product') or '').strip()
+          }
+
+          synced = []
+          for source in tracked_source:
+              pid = str(source.get('id_product') or '').strip()
+              if not pid:
+                  continue
+              row = dict(existing.get(pid) or {})
+              row.update({
+                  'id_product': int(pid),
+                  'name': source.get('name') or row.get('name') or f'Cardmarket ID {pid}',
+                  'expansion_name': source.get('expansion_name') or row.get('expansion_name') or '',
+                  'number': source.get('number') or row.get('number') or '',
+                  'tracking_role': source.get('tracking_role') or row.get('tracking_role') or 'RESALE_REVIEW',
+                  'status': 'TRACKED_REVIEW',
+              })
+              row.setdefault('snapshot_date', '')
+              row.setdefault('trend', None)
+              row.setdefault('avg1', None)
+              row.setdefault('avg7', None)
+              row.setdefault('avg30', None)
+              synced.append(row)
+
+          snapshot['tracked_cards'] = synced
+          snapshot['tracked_sync_generated_at_utc'] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+          snapshot_path.write_text(
+              json.dumps(snapshot, ensure_ascii=False, separators=(',', ':'), allow_nan=False) + '\n',
+              encoding='utf-8',
+          )
+          print(f'synced {len(synced)} tracked cards into dashboard snapshot')
+          assert any(str(r.get('id_product')) == '691947' for r in synced), 'Palkia 691947 missing after sync'
+          PY
+
+      - name: Publish synced snapshot
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain -- dashboard/data/dashboard_snapshot.json)" ]; then
+            echo "No dashboard snapshot changes"
+            exit 0
+          fi
+          git config user.name "pokemon-deal-scanner-dashboard"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard/data/dashboard_snapshot.json
+          git commit -m "Sync owned cards into dashboard snapshot [skip ci]"
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
