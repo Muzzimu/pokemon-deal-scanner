@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from deal_scanner.cardmarket_live import ParseBotCardmarketClient, _extract_listing_rows, _listing_price
+from deal_scanner.cardmarket_live import ParseBotCardmarketClient, _extract_listing_rows, _listing_price, _summary
 from deal_scanner.cardtrader import CardTraderClient, normalize_marketplace
 from deal_scanner.config import load_config, resolve_path
 from deal_scanner.db import blueprint_product_map_for_expansion, expansion_ids_for_products
@@ -92,12 +92,40 @@ def matches_finish(requirement: str, reverse_value: bool | None) -> tuple[bool, 
     return False, False
 
 
+def ask_diagnostics(rows: list[dict], sample_size: int) -> dict:
+    """Return floor + robust floor from already-fetched comparable asks.
+
+    The robust floor is the median of the cheapest N comparable asks. It is a
+    display/research diagnostic only; it does not create an executable exit or BUY.
+    """
+    summary = _summary(rows, sample_size)
+    prices = sorted(
+        float(price)
+        for row in rows
+        if (price := _listing_price(row)) is not None and float(price) > 0
+    )
+    n = min(max(1, sample_size), len(prices)) if prices else 0
+    sample = [round(value, 2) for value in prices[:n]]
+    floor = summary.get("floor")
+    robust = summary.get("robust")
+    spread_pct = None
+    if floor not in (None, 0) and robust is not None:
+        spread_pct = round((float(robust) / float(floor) - 1.0) * 100.0, 1)
+    return {
+        **summary,
+        "robust_sample_size": n,
+        "ask_sample_eur": sample,
+        "floor_to_robust_spread_pct": spread_pct,
+    }
+
+
 def ct_market(conn: sqlite3.Connection, cfg: dict, owned: list[dict]) -> dict[str, dict]:
     token = os.environ.get(str(cfg.get("cardtrader", {}).get("token_env") or "CARDTRADER_API_TOKEN"))
     if not token:
         return {str(r["id_product"]): {"status": "MISSING_CARDTRADER_TOKEN"} for r in owned}
     owned_ids = [int(r["id_product"]) for r in owned]
     owned_by_pid = {int(r["id_product"]): r for r in owned}
+    sample_size = max(1, int(cfg.get("cardmarket_live", {}).get("robust_floor_sample_size", 3)))
     client = CardTraderClient(
         cfg["sources"]["cardtrader_base_url"],
         token,
@@ -137,17 +165,24 @@ def ct_market(conn: sqlite3.Connection, cfg: dict, owned: list[dict]) -> dict[st
     for pid in owned_ids:
         offers = sorted(offers_by_pid[pid], key=lambda x: float(x["price_eur"]))
         if offers:
+            diag = ask_diagnostics(offers, sample_size)
             result[str(pid)] = {
                 "status": "OK",
-                "floor_eur": round(float(offers[0]["price_eur"]), 2),
-                "visible_sellers": len({o.get("seller_id") for o in offers if o.get("seller_id") is not None}),
-                "visible_units": sum(int(o.get("quantity") or 1) for o in offers),
+                "floor_eur": diag["floor"],
+                "robust_floor_eur": diag["robust"],
+                "robust_sample_size": diag["robust_sample_size"],
+                "ask_sample_eur": diag["ask_sample_eur"],
+                "floor_to_robust_spread_pct": diag["floor_to_robust_spread_pct"],
+                "visible_sellers": diag["sellers"],
+                "visible_units": diag["units"],
+                "visible_offer_rows": diag["rows"],
                 "finish_verified": True,
             }
         elif finish_unknown_by_pid[pid]:
             result[str(pid)] = {
                 "status": "VERIFY_FINISH",
                 "floor_eur": None,
+                "robust_floor_eur": None,
                 "visible_sellers": 0,
                 "visible_units": 0,
                 "finish_verified": False,
@@ -156,6 +191,7 @@ def ct_market(conn: sqlite3.Connection, cfg: dict, owned: list[dict]) -> dict[st
             result[str(pid)] = {
                 "status": "NO_COMPARABLE_EN_NM_ASK" if pid not in errors else "DEGRADED",
                 "floor_eur": None,
+                "robust_floor_eur": None,
                 "visible_sellers": 0,
                 "visible_units": 0,
                 "finish_verified": owned_by_pid[pid].get("finish_requirement") == "UNIQUE_PRODUCT",
@@ -170,6 +206,7 @@ def cm_market(cfg: dict, owned: list[dict]) -> dict[str, dict]:
     if not api_key:
         return {str(r["id_product"]): {"status": "MISSING_CARDMARKET_LIVE_KEY"} for r in owned}
 
+    sample_size = max(1, int(live_cfg.get("robust_floor_sample_size", 3)))
     # Preserve provider pacing but avoid an unnecessary sleep after the final request.
     local_cfg = deepcopy(cfg)
     delay = float(local_cfg.get("cardmarket_live", {}).get("request_delay_seconds", 12.5))
@@ -182,7 +219,7 @@ def cm_market(cfg: dict, owned: list[dict]) -> dict[str, dict]:
         try:
             payload = client.listings(pid)
             rows = _extract_listing_rows(payload)
-            prices = []
+            comparable_rows: list[dict] = []
             finish_unknown = 0
             for row in rows:
                 price = _listing_price(row)
@@ -193,19 +230,26 @@ def cm_market(cfg: dict, owned: list[dict]) -> dict[str, dict]:
                 if not finish_verified and card.get("finish_requirement") != "UNIQUE_PRODUCT":
                     finish_unknown += 1
                 if comparable:
-                    prices.append(float(price))
-            if prices:
-                prices.sort()
+                    comparable_rows.append(row)
+            if comparable_rows:
+                diag = ask_diagnostics(comparable_rows, sample_size)
                 result[str(pid)] = {
                     "status": "OK",
-                    "floor_eur": round(prices[0], 2),
-                    "visible_offer_rows": len(prices),
+                    "floor_eur": diag["floor"],
+                    "robust_floor_eur": diag["robust"],
+                    "robust_sample_size": diag["robust_sample_size"],
+                    "ask_sample_eur": diag["ask_sample_eur"],
+                    "floor_to_robust_spread_pct": diag["floor_to_robust_spread_pct"],
+                    "visible_offer_rows": diag["rows"],
+                    "visible_sellers": diag["sellers"],
+                    "visible_units": diag["units"],
                     "finish_verified": True,
                 }
             elif finish_unknown:
                 result[str(pid)] = {
                     "status": "VERIFY_FINISH",
                     "floor_eur": None,
+                    "robust_floor_eur": None,
                     "visible_offer_rows": 0,
                     "finish_verified": False,
                 }
@@ -213,6 +257,7 @@ def cm_market(cfg: dict, owned: list[dict]) -> dict[str, dict]:
                 result[str(pid)] = {
                     "status": "NO_COMPARABLE_EN_NM_ASK",
                     "floor_eur": None,
+                    "robust_floor_eur": None,
                     "visible_offer_rows": 0,
                     "finish_verified": card.get("finish_requirement") == "UNIQUE_PRODUCT",
                 }
@@ -220,6 +265,7 @@ def cm_market(cfg: dict, owned: list[dict]) -> dict[str, dict]:
             result[str(pid)] = {
                 "status": "DEGRADED",
                 "floor_eur": None,
+                "robust_floor_eur": None,
                 "visible_offer_rows": 0,
                 "finish_verified": False,
                 "error": str(exc),
@@ -256,9 +302,10 @@ def main() -> int:
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(
         json.dumps({
-            "schema_version": 1,
+            "schema_version": 2,
             "generated_at_utc": now,
             "purpose": "owned-card decision support; asks are competition references, not realised exits",
+            "robust_ask_note": "robust_floor_eur is the median of the cheapest comparable asks already fetched; diagnostic only",
             "cards": cards,
         }, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n",
         encoding="utf-8",
