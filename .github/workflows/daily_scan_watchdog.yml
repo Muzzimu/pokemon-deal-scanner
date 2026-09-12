@@ -1,0 +1,82 @@
+name: Daily Scan Watchdog
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/daily-scan-watchdog-trigger'
+  schedule:
+    # Independent fallback checks. These run well after the intended 07:00 Dublin
+    # scan window. If the main scheduled workflow never started, the watchdog
+    # dispatches it once. Duplicate protection is based on today's actual runs.
+    - cron: '31 8,10 * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: pokemon-daily-scan-watchdog
+  cancel-in-progress: false
+
+jobs:
+  ensure-daily-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check today's Daily Pokemon Deal Scan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/daily_scan.yml/runs?per_page=30" \
+            > /tmp/daily-runs.json
+
+          decision=$(python - <<'PY'
+          import json
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          with open('/tmp/daily-runs.json', encoding='utf-8') as f:
+              payload = json.load(f)
+
+          dublin = ZoneInfo('Europe/Dublin')
+          today = datetime.now(dublin).date()
+          today_runs = []
+          for run in payload.get('workflow_runs', []):
+              started = run.get('run_started_at') or run.get('created_at')
+              if not started:
+                  continue
+              dt = datetime.fromisoformat(started.replace('Z', '+00:00')).astimezone(dublin)
+              if dt.date() != today:
+                  continue
+              today_runs.append(run)
+
+          # Do not create a duplicate if today's scan is already queued/running,
+          # or if any run completed successfully. A failed/cancelled-only day is
+          # eligible for one fallback dispatch.
+          healthy = [
+              r for r in today_runs
+              if r.get('status') in {'queued', 'in_progress', 'waiting', 'requested', 'pending'}
+              or (r.get('status') == 'completed' and r.get('conclusion') == 'success')
+          ]
+
+          if healthy:
+              newest = sorted(healthy, key=lambda r: r.get('run_started_at') or r.get('created_at') or '', reverse=True)[0]
+              print(f"SKIP|{newest.get('id')}|{newest.get('status')}|{newest.get('conclusion')}")
+          else:
+              print('DISPATCH|||')
+          PY
+          )
+
+          IFS='|' read -r action run_id run_status run_conclusion <<< "$decision"
+          if [[ "$action" == "SKIP" ]]; then
+            echo "Today's Daily Pokemon Deal Scan already exists: run=${run_id} status=${run_status} conclusion=${run_conclusion}"
+            exit 0
+          fi
+
+          echo "No healthy Daily Pokemon Deal Scan found for today in Europe/Dublin; dispatching fallback."
+          gh workflow run daily_scan.yml --ref main
+          echo "Fallback dispatch requested."
