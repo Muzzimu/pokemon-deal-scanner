@@ -2,226 +2,76 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# --- Feature 1: provider usage telemetry + dashboard operations panel ---
+# --- Feature 2: prospective ask-side depth / concentration diagnostics ---
 
-provider_usage = '''from __future__ import annotations
-
-import csv
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-
-USAGE_FIELDS = [
-    "observed_at_utc",
-    "snapshot_date",
-    "provider",
-    "operation",
-    "requests",
-    "documented_credits",
-    "status",
-    "rows",
-    "run_id",
-    "notes",
-]
-
-
-def _clean(value) -> str:
-    return "" if value is None else str(value)
-
-
-def append_provider_usage(
-    path: Path,
-    *,
-    provider: str,
-    operation: str,
-    requests: int = 0,
-    documented_credits: int | float | None = None,
-    status: str = "OK",
-    rows: int | None = None,
-    notes: str = "",
-    observed_at_utc: str | None = None,
-) -> dict:
-    """Append one provider-usage observation without creating duplicate run rows.
-
-    `documented_credits` is only populated when the provider documents the unit cost
-    or account UI confirms it. Unknown credit conversion remains blank.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    now = observed_at_utc or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    snapshot_date = now[:10]
-    run_id = os.environ.get("GITHUB_RUN_ID", "local")
-    record = {
-        "observed_at_utc": now,
-        "snapshot_date": snapshot_date,
-        "provider": provider,
-        "operation": operation,
-        "requests": int(requests or 0),
-        "documented_credits": "" if documented_credits is None else documented_credits,
-        "status": status,
-        "rows": "" if rows is None else int(rows),
-        "run_id": run_id,
-        "notes": notes,
-    }
-
-    existing: list[dict] = []
-    if path.exists():
-        with path.open(newline="", encoding="utf-8") as fh:
-            existing = [dict(row) for row in csv.DictReader(fh)]
-    key = (run_id, provider, operation)
-    existing = [
-        row for row in existing
-        if (str(row.get("run_id")), str(row.get("provider")), str(row.get("operation"))) != key
-    ]
-    existing.append({field: _clean(record.get(field)) for field in USAGE_FIELDS})
-    existing.sort(key=lambda r: (r.get("observed_at_utc", ""), r.get("provider", ""), r.get("operation", "")))
-
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=USAGE_FIELDS)
-        writer.writeheader()
-        writer.writerows(existing)
-    return record
-'''
-(ROOT / "src/deal_scanner/provider_usage.py").write_text(provider_usage, encoding="utf-8")
-
-usage_path = ROOT / "dashboard/data/provider_usage.csv"
-if not usage_path.exists():
-    usage_path.parent.mkdir(parents=True, exist_ok=True)
-    usage_path.write_text(
-        "observed_at_utc,snapshot_date,provider,operation,requests,documented_credits,status,rows,run_id,notes\n",
-        encoding="utf-8",
-    )
-
-limits_path = ROOT / "data/reference/provider_limits.csv"
-if not limits_path.exists():
-    limits_path.write_text(
-        "provider,monthly_credit_limit,unit,as_of,notes\n"
-        "PARSE_CARDMARKET,300,credits,2026-09-12,Free plan account panel; simple live calls are approximately one credit\n"
-        "FIRECRAWL,1000,credits,2026-09-12,Free-cycle allowance shown in account email; scanner automation does not currently consume this provider\n"
-        "SCRAPEBADGER,,credits,2026-09-12,Track documented per-request credits; no monthly cap encoded without an account limit\n",
-        encoding="utf-8",
-    )
-
-# Vinted collector
-path = ROOT / "scripts/run_scrapebadger_vinted.py"
-text = path.read_text(encoding="utf-8")
-anchor = "from deal_scanner.db import connect\n"
-if "provider_usage import append_provider_usage" not in text:
-    text = text.replace(anchor, anchor + "from deal_scanner.provider_usage import append_provider_usage\n", 1)
-if "USAGE_PATH = ROOT / \"dashboard\" / \"data\" / \"provider_usage.csv\"" not in text:
-    text = text.replace('STATUS = ROOT / "output" / "scrapebadger_vinted_status.json"\n', 'STATUS = ROOT / "output" / "scrapebadger_vinted_status.json"\nUSAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"\n', 1)
-old = '''        print("ScrapeBadger Vinted pilot skipped: missing SCRAPEBADGER_API_KEY")\n        return 0\n'''
-new = '''        append_provider_usage(\n            USAGE_PATH, provider="SCRAPEBADGER", operation="vinted_research", requests=0,\n            documented_credits=0, status="UNAVAILABLE", rows=0, notes="missing SCRAPEBADGER_API_KEY",\n        )\n        print("ScrapeBadger Vinted pilot skipped: missing SCRAPEBADGER_API_KEY")\n        return 0\n'''
-if old in text and "operation=\"vinted_research\"" not in text:
-    text = text.replace(old, new, 1)
-old = '''    print(\n        f"ScrapeBadger Vinted pilot: status={status} search={search_requests} detail={detail_requests} "\n        f"rows={len(all_rows)} states={counts}"\n    )\n'''
-new = '''    append_provider_usage(\n        USAGE_PATH,\n        provider="SCRAPEBADGER",\n        operation="vinted_research",\n        requests=search_requests + detail_requests,\n        documented_credits=estimated_credits,\n        status=status,\n        rows=len(all_rows),\n        notes=f"search={search_requests}; detail={detail_requests}",\n    )\n    print(\n        f"ScrapeBadger Vinted pilot: status={status} search={search_requests} detail={detail_requests} "\n        f"rows={len(all_rows)} states={counts}"\n    )\n'''
-if old in text and "notes=f\"search={search_requests}; detail={detail_requests}\"" not in text:
-    text = text.replace(old, new, 1)
-path.write_text(text, encoding="utf-8")
-
-# eBay completed collector
-path = ROOT / "scripts/run_scrapebadger_ebay_completed.py"
-text = path.read_text(encoding="utf-8")
-anchor = "from deal_scanner.db import connect\n"
-if "provider_usage import append_provider_usage" not in text:
-    text = text.replace(anchor, anchor + "from deal_scanner.provider_usage import append_provider_usage\n", 1)
-if "USAGE_PATH = ROOT / \"dashboard\" / \"data\" / \"provider_usage.csv\"" not in text:
-    text = text.replace('STATUS = ROOT / "output" / "scrapebadger_ebay_status.json"\n', 'STATUS = ROOT / "output" / "scrapebadger_ebay_status.json"\nUSAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"\n', 1)
-old = '''        print("ScrapeBadger eBay completed pilot skipped: missing SCRAPEBADGER_API_KEY")\n        return 0\n'''
-new = '''        append_provider_usage(\n            USAGE_PATH, provider="SCRAPEBADGER", operation="ebay_completed_research", requests=0,\n            documented_credits=0, status="UNAVAILABLE", rows=0, notes="missing SCRAPEBADGER_API_KEY",\n        )\n        print("ScrapeBadger eBay completed pilot skipped: missing SCRAPEBADGER_API_KEY")\n        return 0\n'''
-if old in text and "operation=\"ebay_completed_research\"" not in text:
-    text = text.replace(old, new, 1)
-old = '''    print(\n        f"ScrapeBadger eBay completed pilot: status={status} requests={requests_made} "\n        f"rows={len(rows)} exact={sum(r['identity_status'] == 'EXACT_TITLE_MATCH' for r in rows)}"\n    )\n'''
-new = '''    append_provider_usage(\n        USAGE_PATH,\n        provider="SCRAPEBADGER",\n        operation="ebay_completed_research",\n        requests=requests_made,\n        documented_credits=requests_made * 5,\n        status=status,\n        rows=len(rows),\n        notes=f"domains={','.join(DOMAINS)}; watch_cards={len(watches)}",\n    )\n    print(\n        f"ScrapeBadger eBay completed pilot: status={status} requests={requests_made} "\n        f"rows={len(rows)} exact={sum(r['identity_status'] == 'EXACT_TITLE_MATCH' for r in rows)}"\n    )\n'''
-if old in text and "notes=f\"domains={','.join(DOMAINS)}" not in text:
-    text = text.replace(old, new, 1)
-path.write_text(text, encoding="utf-8")
-
-# Owned-card Parse usage
 path = ROOT / "scripts/refresh_owned_market.py"
 text = path.read_text(encoding="utf-8")
-anchor = "from deal_scanner.db import blueprint_product_map_for_expansion, expansion_ids_for_products\n"
-if "provider_usage import append_provider_usage" not in text:
-    text = text.replace(anchor, anchor + "from deal_scanner.provider_usage import append_provider_usage\n", 1)
-if "USAGE_PATH = ROOT / \"dashboard\" / \"data\" / \"provider_usage.csv\"" not in text:
-    text = text.replace('OUTPUT_PATH = ROOT / "dashboard" / "data" / "owned_market.json"\n', 'OUTPUT_PATH = ROOT / "dashboard" / "data" / "owned_market.json"\nUSAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"\n', 1)
-old = '''    cm = cm_market(cfg, owned)\n\n    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()\n'''
-new = '''    cm = cm_market(cfg, owned)\n    live_cfg = cfg.get("cardmarket_live", {})\n    parse_key = os.environ.get(str(live_cfg.get("api_key_env") or "PARSE_API_KEY"))\n    parse_requests = len(owned) if parse_key else 0\n\n    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()\n'''
-if old in text and "parse_requests = len(owned)" not in text:
-    text = text.replace(old, new, 1)
-old = '''    print(f"Wrote {OUTPUT_PATH.relative_to(ROOT)} with {len(cards)} owned cards")\n    return 0\n'''
-new = '''    append_provider_usage(\n        USAGE_PATH,\n        provider="PARSE_CARDMARKET",\n        operation="owned_card_live_asks",\n        requests=parse_requests,\n        documented_credits=parse_requests if parse_key else 0,\n        status="OK" if parse_key else "UNAVAILABLE",\n        rows=sum(1 for value in cm.values() if str(value.get("status") or "").upper() == "OK"),\n        notes="Account UI indicates approximately one credit per simple live call; one exact-product request per owned card.",\n        observed_at_utc=now,\n    )\n    print(f"Wrote {OUTPUT_PATH.relative_to(ROOT)} with {len(cards)} owned cards")\n    return 0\n'''
-if old in text and "provider=\"PARSE_CARDMARKET\"" not in text:
-    text = text.replace(old, new, 1)
-path.write_text(text, encoding="utf-8")
-
-# ScrapeBadger workflow: publish usage telemetry.
-path = ROOT / ".github/workflows/scrapebadger_research.yml"
-text = path.read_text(encoding="utf-8")
-text = text.replace("permissions:\n  contents: read\n", "permissions:\n  contents: write\n", 1)
-anchor = '''      - name: Verify research database\n'''
-publish = '''      - name: Publish provider usage telemetry\n        shell: bash\n        run: |\n          set -euo pipefail\n          if [ -z "$(git status --porcelain -- dashboard/data/provider_usage.csv)" ]; then\n            echo "Provider usage telemetry unchanged"\n          else\n            git config user.name "pokemon-deal-scanner-dashboard"\n            git config user.email "actions@users.noreply.github.com"\n            git add dashboard/data/provider_usage.csv\n            git commit -m "Update provider usage telemetry [skip ci]"\n            git pull --rebase --autostash origin main\n            git push origin HEAD:main\n          fi\n\n'''
-if publish not in text:
-    text = text.replace(anchor, publish + anchor, 1)
-path.write_text(text, encoding="utf-8")
-
-# Owned market workflow: include provider usage in same commit.
-path = ROOT / ".github/workflows/owned_market_refresh.yml"
-text = path.read_text(encoding="utf-8")
 text = text.replace(
-    'if [ -z "$(git status --porcelain -- dashboard/data/owned_market.json)" ]; then',
-    'if [ -z "$(git status --porcelain -- dashboard/data/owned_market.json dashboard/data/provider_usage.csv)" ]; then',
+    "from deal_scanner.cardmarket_live import ParseBotCardmarketClient, _extract_listing_rows, _listing_price, _summary\n",
+    "from deal_scanner.cardmarket_live import (\n    ParseBotCardmarketClient, _extract_listing_rows, _listing_price, _summary, _seller_key, _quantity\n)\n",
     1,
 )
+if 'DEPTH_HISTORY_PATH = ROOT / "dashboard" / "data" / "owned_depth_history.csv"' not in text:
+    text = text.replace(
+        'USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"\n',
+        'USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"\nDEPTH_HISTORY_PATH = ROOT / "dashboard" / "data" / "owned_depth_history.csv"\n',
+        1,
+    )
+
+start = text.index("def ask_diagnostics(rows: list[dict], sample_size: int) -> dict:\n")
+end = text.index("\n\ndef ct_market", start)
+replacement = '''def ask_diagnostics(rows: list[dict], sample_size: int) -> dict:\n    """Return floor, robust floor and ask-side structure from already-fetched rows.\n\n    These are diagnostic-only market-structure measures. They do not create a BUY,\n    fair-value override or executable exit.\n    """\n    summary = _summary(rows, sample_size)\n    offers = []\n    for index, row in enumerate(rows):\n        price = _listing_price(row)\n        if price is None or float(price) <= 0:\n            continue\n        offers.append({\n            "price": float(price),\n            "seller": _seller_key(row, index),\n            "quantity": _quantity(row),\n        })\n    offers.sort(key=lambda r: r["price"])\n    prices = [r["price"] for r in offers]\n    n = min(max(1, sample_size), len(prices)) if prices else 0\n    sample = [round(value, 2) for value in prices[:n]]\n    floor = summary.get("floor")\n    robust = summary.get("robust")\n    spread_pct = None\n    if floor not in (None, 0) and robust is not None:\n        spread_pct = round((float(robust) / float(floor) - 1.0) * 100.0, 1)\n\n    def band_stats(multiplier: float) -> tuple[int, int]:\n        if not offers:\n            return 0, 0\n        ceiling = offers[0]["price"] * multiplier\n        selected = [r for r in offers if r["price"] <= ceiling + 1e-9]\n        return sum(int(r["quantity"]) for r in selected), len({r["seller"] for r in selected})\n\n    floor3_units, floor3_sellers = band_stats(1.03)\n    near10_units, near10_sellers = band_stats(1.10)\n    next_distinct_gap_pct = None\n    if offers:\n        base = offers[0]["price"]\n        for row in offers[1:]:\n            if row["price"] > base + 1e-9:\n                next_distinct_gap_pct = round((row["price"] / base - 1.0) * 100.0, 1)\n                break\n\n    seller_units: dict[str, int] = {}\n    for row in offers:\n        seller_units[row["seller"]] = seller_units.get(row["seller"], 0) + int(row["quantity"])\n    total_units = sum(seller_units.values())\n    shares = sorted((units / total_units for units in seller_units.values()), reverse=True) if total_units else []\n    top1 = round(shares[0] * 100.0, 1) if shares else None\n    top3 = round(sum(shares[:3]) * 100.0, 1) if shares else None\n    hhi = round(sum(share * share for share in shares) * 10000.0, 0) if shares else None\n\n    return {\n        **summary,\n        "robust_sample_size": n,\n        "ask_sample_eur": sample,\n        "floor_to_robust_spread_pct": spread_pct,\n        "floor_depth_3pct_units": floor3_units,\n        "floor_depth_3pct_sellers": floor3_sellers,\n        "near_floor_10pct_units": near10_units,\n        "near_floor_10pct_sellers": near10_sellers,\n        "next_distinct_ask_gap_pct": next_distinct_gap_pct,\n        "top1_seller_unit_share_pct": top1,\n        "top3_seller_unit_share_pct": top3,\n        "seller_hhi": hhi,\n    }\n\n\ndef append_depth_history(cards: list[dict], observed_at: str) -> None:\n    fields = [\n        "observed_at_utc", "id_product", "name", "provider", "status",\n        "floor_eur", "robust_floor_eur", "visible_sellers", "visible_units",\n        "floor_depth_3pct_units", "floor_depth_3pct_sellers",\n        "near_floor_10pct_units", "near_floor_10pct_sellers",\n        "next_distinct_ask_gap_pct", "top1_seller_unit_share_pct",\n        "top3_seller_unit_share_pct", "seller_hhi",\n    ]\n    existing = []\n    if DEPTH_HISTORY_PATH.exists():\n        with DEPTH_HISTORY_PATH.open(newline="", encoding="utf-8") as fh:\n            existing = [dict(row) for row in csv.DictReader(fh)]\n    keys = {(observed_at, str(card.get("id_product")), provider) for card in cards for provider in ("cardmarket", "cardtrader")}\n    existing = [\n        row for row in existing\n        if (row.get("observed_at_utc"), str(row.get("id_product")), row.get("provider")) not in keys\n    ]\n    for card in cards:\n        for provider in ("cardmarket", "cardtrader"):\n            source = card.get(provider) or {}\n            row = {\n                "observed_at_utc": observed_at,\n                "id_product": card.get("id_product"),\n                "name": card.get("name"),\n                "provider": provider.upper(),\n                "status": source.get("status"),\n            }\n            for field in fields[5:]:\n                row[field] = source.get(field)\n            existing.append(row)\n    existing.sort(key=lambda r: (r.get("observed_at_utc", ""), str(r.get("id_product", "")), r.get("provider", "")))\n    DEPTH_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)\n    with DEPTH_HISTORY_PATH.open("w", newline="", encoding="utf-8") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fields)\n        writer.writeheader()\n        writer.writerows(existing)\n'''
+text = text[:start] + replacement + text[end:]
+
+# Add new diagnostics to OK source payloads after the existing finish_verified field.
+needle = '                "finish_verified": True,\n'
+extra = '''                "floor_depth_3pct_units": diag["floor_depth_3pct_units"],\n                "floor_depth_3pct_sellers": diag["floor_depth_3pct_sellers"],\n                "near_floor_10pct_units": diag["near_floor_10pct_units"],\n                "near_floor_10pct_sellers": diag["near_floor_10pct_sellers"],\n                "next_distinct_ask_gap_pct": diag["next_distinct_ask_gap_pct"],\n                "top1_seller_unit_share_pct": diag["top1_seller_unit_share_pct"],\n                "top3_seller_unit_share_pct": diag["top3_seller_unit_share_pct"],\n                "seller_hhi": diag["seller_hhi"],\n'''
+# Both CardTrader and Cardmarket OK blocks have the same anchor.
+if text.count('"floor_depth_3pct_units": diag["floor_depth_3pct_units"]') < 2:
+    text = text.replace(needle, extra + needle, 2)
+
+old = '''    OUTPUT_PATH.write_text(\n        json.dumps({\n            "schema_version": 2,\n'''
+new = '''    append_depth_history(cards, now)\n    OUTPUT_PATH.write_text(\n        json.dumps({\n            "schema_version": 3,\n'''
+if old in text:
+    text = text.replace(old, new, 1)
 text = text.replace(
-    'git add dashboard/data/owned_market.json\n',
-    'git add dashboard/data/owned_market.json dashboard/data/provider_usage.csv\n',
+    '            "robust_ask_note": "robust_floor_eur is the median of the cheapest comparable asks already fetched; diagnostic only",\n',
+    '            "robust_ask_note": "robust_floor_eur is the median of the cheapest comparable asks already fetched; diagnostic only",\n            "depth_note": "ask-side depth/concentration fields are prospective diagnostics only and do not alter BUY/FV logic",\n',
     1,
 )
 path.write_text(text, encoding="utf-8")
 
-# Dashboard provider-usage operations panel.
+# Seed history file if it does not exist.
+history = ROOT / "dashboard/data/owned_depth_history.csv"
+if not history.exists():
+    history.write_text(
+        "observed_at_utc,id_product,name,provider,status,floor_eur,robust_floor_eur,visible_sellers,visible_units,floor_depth_3pct_units,floor_depth_3pct_sellers,near_floor_10pct_units,near_floor_10pct_sellers,next_distinct_ask_gap_pct,top1_seller_unit_share_pct,top3_seller_unit_share_pct,seller_hhi\n",
+        encoding="utf-8",
+    )
+
+# Dashboard: show current ask structure under the live pricing table.
 path = ROOT / "dashboard/app.py"
 text = path.read_text(encoding="utf-8")
-const_anchor = 'CARD_IMAGE_PATH = ROOT / "dashboard" / "data" / "card_images.json"\n'
-if 'PROVIDER_USAGE_PATH' not in text:
-    text = text.replace(
-        const_anchor,
-        const_anchor + 'PROVIDER_USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"\nPROVIDER_LIMITS_PATH = ROOT / "data" / "reference" / "provider_limits.csv"\n',
-        1,
-    )
-helper_anchor = '''def load_card_images(path: Path) -> dict[str, dict]:\n'''
-helpers = '''def provider_usage_summary(rows: list[dict], limits: list[dict]) -> list[dict]:\n    now = datetime.now().astimezone()\n    limit_map = {str(r.get("provider")): r for r in limits}\n    providers = sorted({str(r.get("provider")) for r in rows if r.get("provider")} | set(limit_map))\n    result = []\n    for provider in providers:\n        provider_rows = [r for r in rows if str(r.get("provider")) == provider]\n        def within_days(days: int) -> list[dict]:\n            cutoff = now.timestamp() - days * 86400\n            selected = []\n            for row in provider_rows:\n                stamp = clean_text(row.get("observed_at_utc"))\n                if not stamp:\n                    continue\n                try:\n                    parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))\n                except ValueError:\n                    continue\n                if parsed.timestamp() >= cutoff:\n                    selected.append(row)\n            return selected\n        month_rows = [r for r in provider_rows if str(r.get("snapshot_date") or "")[:7] == now.strftime("%Y-%m")]\n        today_rows = [r for r in provider_rows if str(r.get("snapshot_date") or "") == now.strftime("%Y-%m-%d")]\n        def total(selected: list[dict], field: str) -> float:\n            return sum(as_float(r.get(field)) or 0 for r in selected)\n        limit = as_float(limit_map.get(provider, {}).get("monthly_credit_limit"))\n        month_credits = total(month_rows, "documented_credits")\n        remaining = None if limit is None else max(0.0, limit - month_credits)\n        result.append({\n            "Provider": provider.replace("_", " ").title(),\n            "Today requests": int(total(today_rows, "requests")),\n            "7d requests": int(total(within_days(7), "requests")),\n            "30d requests": int(total(within_days(30), "requests")),\n            "Month credits": month_credits if provider_rows else None,\n            "Monthly limit": limit,\n            "Remaining": remaining if provider_rows else None,\n            "Latest status": clean_text(provider_rows[-1].get("status")) if provider_rows else "NOT INSTRUMENTED",\n        })\n    return result\n\n\n'''
-if 'def provider_usage_summary(' not in text:
-    text = text.replace(helper_anchor, helpers + helper_anchor, 1)
-load_anchor = 'CARD_IMAGES = load_card_images(CARD_IMAGE_PATH)\n'
-if 'provider_usage_rows = read_csv(PROVIDER_USAGE_PATH)' not in text:
-    text = text.replace(
-        load_anchor,
-        load_anchor + 'provider_usage_rows = read_csv(PROVIDER_USAGE_PATH)\nprovider_limits = read_csv(PROVIDER_LIMITS_PATH)\n',
-        1,
-    )
-health_anchor = '''with tab_health:\n    st.subheader("Experience-store maturity")\n'''
-health_new = '''with tab_health:\n    st.subheader("Provider usage")\n    usage_summary = provider_usage_summary(provider_usage_rows, provider_limits)\n    if usage_summary:\n        st.dataframe(\n            usage_summary,\n            use_container_width=True,\n            hide_index=True,\n            column_config={\n                "Month credits": st.column_config.NumberColumn(format="%.0f"),\n                "Monthly limit": st.column_config.NumberColumn(format="%.0f"),\n                "Remaining": st.column_config.NumberColumn(format="%.0f"),\n            },\n        )\n        st.caption("Credits are shown only where the provider documents the unit cost or the account UI confirms it. Firecrawl is listed as a known account limit but scanner automation does not currently instrument its usage.")\n    else:\n        st.caption("No provider-usage observations have been recorded yet.")\n\n    st.subheader("Experience-store maturity")\n'''
-if health_anchor in text and 'st.subheader("Provider usage")' not in text:
-    text = text.replace(health_anchor, health_new, 1)
+anchor = '''def owned_result_summary(row: dict, landed: float | None) -> tuple[str, float | None, float | None]:\n'''
+helper = '''def owned_structure_text(row: dict, source_name: str, label: str) -> str | None:\n    source = row.get(source_name) or {}\n    if not isinstance(source, dict) or str(source.get("status") or "").upper() != "OK":\n        return None\n    u3, s3 = as_int(source.get("floor_depth_3pct_units")), as_int(source.get("floor_depth_3pct_sellers"))\n    u10, s10 = as_int(source.get("near_floor_10pct_units")), as_int(source.get("near_floor_10pct_sellers"))\n    gap = as_float(source.get("next_distinct_ask_gap_pct"))\n    top1 = as_float(source.get("top1_seller_unit_share_pct"))\n    parts = []\n    if u3 is not None or s3 is not None:\n        parts.append(f"+3% floor {u3 if u3 is not None else '—'}u/{s3 if s3 is not None else '—'}s")\n    if u10 is not None or s10 is not None:\n        parts.append(f"+10% {u10 if u10 is not None else '—'}u/{s10 if s10 is not None else '—'}s")\n    if gap is not None:\n        parts.append(f"next distinct ask +{gap:.1f}%")\n    if top1 is not None:\n        parts.append(f"top seller {top1:.0f}% of units")\n    return f"{label}: " + " · ".join(parts) if parts else None\n\n\n'''
+if 'def owned_structure_text(' not in text:
+    text = text.replace(anchor, helper + anchor, 1)
+old = '''    if samples:\n        st.caption(" · ".join(samples))\n'''
+new = '''    if samples:\n        st.caption(" · ".join(samples))\n    structures = [\n        value for value in (\n            owned_structure_text(row, "cardmarket", "CM structure"),\n            owned_structure_text(row, "cardtrader", "CT structure"),\n        ) if value\n    ]\n    if structures:\n        st.caption(" | ".join(structures))\n'''
+if old in text and 'CM structure' not in text:
+    text = text.replace(old, new, 1)
 path.write_text(text, encoding="utf-8")
 
-# Tests
-provider_test = '''from pathlib import Path\n\nfrom deal_scanner.provider_usage import append_provider_usage\n\n\ndef test_provider_usage_deduplicates_same_run(monkeypatch, tmp_path: Path):\n    monkeypatch.setenv("GITHUB_RUN_ID", "42")\n    path = tmp_path / "usage.csv"\n    append_provider_usage(path, provider="X", operation="one", requests=2, documented_credits=4, rows=1)\n    append_provider_usage(path, provider="X", operation="one", requests=3, documented_credits=6, rows=2)\n    lines = path.read_text(encoding="utf-8").strip().splitlines()\n    assert len(lines) == 2\n    assert ",3,6," in lines[1]\n'''
-(ROOT / "tests/test_provider_usage.py").write_text(provider_test, encoding="utf-8")
+# Tests for deterministic depth diagnostics.
+test = '''from scripts.refresh_owned_market import ask_diagnostics\n\n\ndef test_ask_diagnostics_structure():\n    rows = [\n        {"price_eur": 10.00, "seller_id": 1, "quantity": 2},\n        {"price_eur": 10.20, "seller_id": 2, "quantity": 1},\n        {"price_eur": 10.90, "seller_id": 1, "quantity": 2},\n        {"price_eur": 12.00, "seller_id": 3, "quantity": 5},\n    ]\n    out = ask_diagnostics(rows, 3)\n    assert out["floor_eur"] if "floor_eur" in out else out["floor"] == 10.0\n    assert out["floor_depth_3pct_units"] == 3\n    assert out["floor_depth_3pct_sellers"] == 2\n    assert out["near_floor_10pct_units"] == 5\n    assert out["near_floor_10pct_sellers"] == 2\n    assert out["next_distinct_ask_gap_pct"] == 2.0\n    assert out["top1_seller_unit_share_pct"] == 50.0\n'''
+(ROOT / "tests/test_owned_depth_diagnostics.py").write_text(test, encoding="utf-8")
 
-# Dashboard contract note.
+# Roadmap note: data collection starts prospectively, still diagnostic-only.
 doc_path = ROOT / "docs/DASHBOARD.md"
 doc = doc_path.read_text(encoding="utf-8")
-marker = "## "
-note = '''\n## Provider usage telemetry\n\nProvider/API consumption is an operational diagnostic, not a market or BUY signal. Persist request counts and documented/provider-confirmed credit units by run, keep providers separate, and show daily/7d/30d/month usage under Model health. Never invent a credit conversion. Optimisation should remove duplicate/low-value calls before weakening identity/language/condition/finish validation.\n\n'''
-if "## Provider usage telemetry" not in doc:
-    idx = doc.find(marker)
-    if idx >= 0:
-        doc = doc[:idx] + note + doc[idx:]
-    else:
-        doc += note
+note = '''\n## Ask-side structure diagnostics\n\nOwned-card CM/CT refreshes preserve ask-side structure from the same already-fetched exact EN/NM/finish-matched rows: depth within +3% and +10% of floor, next distinct ask gap, seller concentration and HHI. The append-only `dashboard/data/owned_depth_history.csv` starts prospective history that cannot be reconstructed reliably later. These fields are display/research diagnostics only; they do not change v0.12 BUY/FV/route logic.\n\n'''
+if "## Ask-side structure diagnostics" not in doc:
+    doc += note
     doc_path.write_text(doc, encoding="utf-8")
 
-(ROOT / ".patch-message").write_text("Add provider usage telemetry and operations panel\n", encoding="utf-8")
+(ROOT / ".patch-message").write_text("Add prospective ask-side depth diagnostics\n", encoding="utf-8")
