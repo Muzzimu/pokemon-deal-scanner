@@ -1,0 +1,185 @@
+from pathlib import Path
+
+path = Path('dashboard/app.py')
+app = path.read_text(encoding='utf-8')
+
+app = app.replace(
+    'TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"\n',
+    'TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"\n'
+    'OWNED_LEDGER_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"\n'
+    'OWNED_MARKET_PATH = ROOT / "dashboard" / "data" / "owned_market.json"\n'
+)
+
+helper_marker = '\n\ndef render_route_card(row: dict) -> None:\n'
+helpers = '''
+
+
+def owned_floor(row: dict, source_name: str):
+    source = row.get(source_name) or {}
+    if not isinstance(source, dict) or str(source.get("status") or "").upper() != "OK":
+        return None
+    return as_float(source.get("floor_eur"))
+
+
+def owned_source_caption(row: dict, source_name: str, label: str) -> str:
+    source = row.get(source_name) or {}
+    if not isinstance(source, dict):
+        return f"{label}: not queried"
+    status = str(source.get("status") or "NOT_QUERIED").upper()
+    if status == "OK":
+        bits = [f"{label}: comparable EN/NM ask"]
+        if source.get("visible_sellers") not in (None, ""):
+            bits.append(f"{source.get('visible_sellers')} sellers")
+        if source.get("visible_units") not in (None, ""):
+            bits.append(f"{source.get('visible_units')} units")
+        return " · ".join(bits)
+    if status == "VERIFY_FINISH":
+        return f"{label}: finish/parallel not verified — floor withheld"
+    if status == "NO_COMPARABLE_EN_NM_ASK":
+        return f"{label}: no comparable EN/NM ask found"
+    if status.startswith("MISSING_"):
+        return f"{label}: source unavailable in this refresh"
+    if status == "DEGRADED":
+        return f"{label}: refresh degraded"
+    return f"{label}: not queried"
+'''
+if 'def owned_floor(' not in app:
+    if helper_marker not in app:
+        raise SystemExit('render_route_card marker not found')
+    app = app.replace(helper_marker, helpers + helper_marker)
+
+old_route = '''def render_route_card(row: dict) -> None:
+    with st.container(border=True):
+        st.markdown(f"#### {short_name(row.get('name'))}")
+        st.caption(card_context(row))
+        st.markdown(f"**{signal_label(row.get('route_signal'))}**")
+        st.markdown(f"**Exit route:** {human_channel(row.get('best_sell_channel'))}")
+        p1, p2 = st.columns(2)
+        p1.metric("Validated buy", format_eur(row.get("best_validated_buy_eur")))
+        p2.metric("EU fair value", format_eur(row.get("eu_fair_value_eur")))
+        p3, p4 = st.columns(2)
+        p3.metric("Modelled net exit", format_eur(row.get("best_sell_net_eur")))
+        p4.metric("Modelled net profit", format_eur(row.get("net_spread_eur")))
+        st.markdown(f"**Modelled ROI:** {format_pct(row.get('net_roi_pct'))}")
+'''
+new_route = '''def render_route_card(row: dict) -> None:
+    with st.container(border=True):
+        st.markdown(f"#### {short_name(row.get('name'))}")
+        st.caption(card_context(row))
+        st.markdown(f"**{signal_label(row.get('route_signal'))}**")
+        st.markdown(f"**Exit route:** {human_channel(row.get('best_sell_channel'))}")
+        owner_landed = as_float(row.get("landed_cost_eur"))
+        if owner_landed is not None:
+            o1, o2 = st.columns(2)
+            o1.metric("You paid", format_eur(row.get("item_paid_eur")))
+            o2.metric("Your landed cost", format_eur(owner_landed))
+            cm_floor = owned_floor(row, "cardmarket")
+            ct_floor = owned_floor(row, "cardtrader")
+            o3, o4 = st.columns(2)
+            o3.metric("Lowest comparable CM ask", format_eur(cm_floor))
+            o4.metric("Lowest comparable CT ask", format_eur(ct_floor))
+            st.caption(owned_source_caption(row, "cardmarket", "Cardmarket"))
+            st.caption(owned_source_caption(row, "cardtrader", "CardTrader"))
+        p1, p2 = st.columns(2)
+        p1.metric("Scanner validated buy", format_eur(row.get("best_validated_buy_eur")))
+        p2.metric("EU fair value", format_eur(row.get("eu_fair_value_eur")))
+        p3, p4 = st.columns(2)
+        p3.metric("Modelled net exit", format_eur(row.get("best_sell_net_eur")))
+        owner_exit = as_float(row.get("best_sell_net_eur"))
+        if owner_landed is not None and owner_exit is not None:
+            owner_profit = owner_exit - owner_landed
+            owner_roi = (owner_profit / owner_landed * 100.0) if owner_landed else None
+            p4.metric("Your profit at modelled exit", format_eur(owner_profit))
+            st.markdown(f"**Your ROI at modelled exit:** {format_pct(owner_roi)}")
+        else:
+            p4.metric("Scanner modelled net profit", format_eur(row.get("net_spread_eur")))
+            st.markdown(f"**Scanner modelled ROI:** {format_pct(row.get('net_roi_pct'))}")
+'''
+if old_route not in app:
+    raise SystemExit('render_route_card patch target not found')
+app = app.replace(old_route, new_route)
+
+old_tracked = '''def render_tracked_card(row: dict) -> None:
+    with st.container(border=True):
+        st.markdown(f"#### {short_name(row.get('name'))}")
+        st.caption(card_context(row))
+        st.markdown("**🟣 TRACKED REVIEW**")
+        c1, c2 = st.columns(2)
+        c1.metric("Cardmarket trend", format_eur(row.get("trend")))
+        c2.metric("30d average", format_eur(row.get("avg30")))
+        c3, c4 = st.columns(2)
+        c3.metric("7d average", format_eur(row.get("avg7")))
+        c4.metric("1d average", format_eur(row.get("avg1")))
+        st.caption("Tracked for review. No BUY, fair-value or exit signal is fabricated when the card is not in the routed model.")
+'''
+new_tracked = '''def render_tracked_card(row: dict) -> None:
+    with st.container(border=True):
+        st.markdown(f"#### {short_name(row.get('name'))}")
+        st.caption(card_context(row))
+        st.markdown("**🟣 OWNED REVIEW**")
+        c1, c2 = st.columns(2)
+        c1.metric("You paid", format_eur(row.get("item_paid_eur")))
+        c2.metric("Your landed cost", format_eur(row.get("landed_cost_eur")))
+        cm_floor = owned_floor(row, "cardmarket")
+        ct_floor = owned_floor(row, "cardtrader")
+        c3, c4 = st.columns(2)
+        c3.metric("Lowest comparable CM ask", format_eur(cm_floor))
+        c4.metric("Lowest comparable CT ask", format_eur(ct_floor))
+        st.caption(owned_source_caption(row, "cardmarket", "Cardmarket"))
+        st.caption(owned_source_caption(row, "cardtrader", "CardTrader"))
+        with st.expander("Market context"):
+            st.write({
+                "Cardmarket trend": format_eur(row.get("trend")),
+                "30d average": format_eur(row.get("avg30")),
+                "7d average": format_eur(row.get("avg7")),
+                "1d average": format_eur(row.get("avg1")),
+                "purchase date": row.get("purchase_date"),
+                "purchase source": row.get("purchase_source"),
+                "allocated shipping": format_eur(row.get("allocated_shipping_eur")),
+                "finish rule": row.get("finish_requirement"),
+            })
+        st.caption("Owned-card review. Active asks are competition references, not realised exits; no BUY/SELL signal is fabricated when the card is not routed.")
+'''
+if old_tracked not in app:
+    raise SystemExit('render_tracked_card patch target not found')
+app = app.replace(old_tracked, new_tracked)
+
+load_marker = '''for key in ("t7", "t7_cards", "t30", "t30_cards"):
+    maturity[key] = int(maturity.get(key) or 0)
+'''
+load_block = '''owned_market_payload = read_snapshot(OWNED_MARKET_PATH)
+owned_rows = list(owned_market_payload.get("cards") or [])
+if not owned_rows:
+    owned_rows = read_csv(OWNED_LEDGER_PATH)
+owned_by_pid = {str(r.get("id_product")): dict(r) for r in owned_rows if r.get("id_product") not in (None, "")}
+enriched_tracked = []
+for source in tracked:
+    row = dict(source)
+    owned = owned_by_pid.get(str(row.get("id_product")))
+    if owned:
+        row.update({k: v for k, v in owned.items() if v not in (None, "")})
+    enriched_tracked.append(row)
+tracked = enriched_tracked
+
+for key in ("t7", "t7_cards", "t30", "t30_cards"):
+    maturity[key] = int(maturity.get(key) or 0)
+'''
+if load_marker not in app:
+    raise SystemExit('owned merge marker not found')
+app = app.replace(load_marker, load_block)
+
+replacements = {
+    'options=["Routed + tracked", "Tracked cards", "Routed priority"]': 'options=["Routed + owned", "Owned cards", "Routed priority"]',
+    '"Tracked cards are the exact resale-review cards on the public-safe watchlist; bundle-only €1 hero cards are excluded."': '"Owned cards are the exact resale-review purchases; bundle-only €1 hero cards are excluded."',
+    'if review_set in {"Routed + tracked", "Routed priority"}:': 'if review_set in {"Routed + owned", "Routed priority"}:',
+    'if review_set in {"Routed + tracked", "Tracked cards"}:': 'if review_set in {"Routed + owned", "Owned cards"}:',
+    'display_limit = len(combined_priority) if review_set == "Tracked cards" else min(len(combined_priority), 18)': 'display_limit = len(combined_priority) if review_set == "Owned cards" else min(len(combined_priority), 18)',
+    'st.caption("🟣 Tracked review card")': 'st.caption("🟣 Owned review card")',
+}
+for old, new in replacements.items():
+    if old not in app:
+        raise SystemExit(f'expected UI text not found: {old}')
+    app = app.replace(old, new)
+
+path.write_text(app, encoding='utf-8')
+print('Patched dashboard/app.py')
