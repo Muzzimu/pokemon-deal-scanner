@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - scripts/apply_planned_batch_patch.py
+      - .github/planned-batch-trigger
 
 permissions:
   contents: write
