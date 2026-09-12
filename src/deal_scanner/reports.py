@@ -5,6 +5,7 @@ import json
 from datetime import date
 from pathlib import Path
 
+from .cross_price import build_cross_price_research
 from .scoring import matches_hit, score_row
 
 
@@ -15,6 +16,12 @@ COMMON_FIELDS = [
     "ct_en_nm_floor", "ct_visible_units", "ct_visible_sellers", "ct_zero_units",
     "hist_low", "hist_days", "generic_gap_pct", "gap_pct", "volatility_30d",
     "popularity_score", "best_validated_sourcing_price", "deal_score", "status",
+]
+
+CROSS_PRICE_FIELDS = COMMON_FIELDS + [
+    "reference_band", "reference_value_eur", "reference_basis",
+    "screening_acquisition_eur", "acquisition_basis", "gross_headroom_eur",
+    "friction_budget_eur", "cross_price_gap_pct", "research_state",
 ]
 
 
@@ -153,10 +160,12 @@ def generate_reports(conn, cfg: dict, output_dir: Path) -> dict:
     dragons = build_dragonite(scored, cfg)
     flips = build_top_flips(scored, cfg)[: cfg["rules"]["max_report_rows"]]
     bundles = build_bundle_candidates(scored, cfg)
+    cross_price = build_cross_price_research(scored, cfg)
 
     write_csv(output_dir / "cheap_ex.csv", cheap, COMMON_FIELDS)
     write_csv(output_dir / "dragonite.csv", dragons, COMMON_FIELDS + ["dragonite_target"])
     write_csv(output_dir / "top_flips.csv", flips, COMMON_FIELDS)
+    write_csv(output_dir / "cross_price_research.csv", cross_price, CROSS_PRICE_FIELDS)
     write_csv(output_dir / "bundle_candidates.csv", bundles, [
         "character", "cards_found", "cards", "generic_low_total", "validated_en_nm_total",
         "generic_discovery_ok", "validated_buy_ok",
@@ -169,11 +178,12 @@ def generate_reports(conn, cfg: dict, output_dir: Path) -> dict:
         "cheap_hit_rows": len(cheap),
         "dragonite_rows": len(dragons),
         "top_flip_rows": len(flips),
+        "cross_price_research_rows": len(cross_price),
         "bundle_rows": len(bundles),
         "new_product_signal_guard_days": int(cfg["rules"].get("min_product_age_days_for_flip_signal", 0)),
         "validated_cardmarket_en_nm": sum(1 for r in scored if r.get("cm_en_nm_floor") is not None),
         "visible_cardtrader_en_nm": sum(1 for r in scored if r.get("ct_en_nm_floor") is not None),
-        "pricing_guardrail": "Cardmarket generic low is discovery only and cannot drive gap_pct, deal-score gap, or top-flip qualification. Top flips require validated EN/NM acquisition evidence. A Cardmarket BUY additionally requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing layer. CardTrader EN/NM remains separately labelled. eBay active asks are never labelled as sold prices.",
+        "pricing_guardrail": "Cardmarket generic low is discovery only and cannot drive gap_pct, deal-score gap, top-flip qualification, or BUY. cross_price_research.csv may use generic Cardmarket low only as an explicitly labelled screening price to distribute research across value bands; validated EN/NM acquisition evidence remains preferred. A Cardmarket BUY additionally requires EN/NM + ships to Ireland + confirmed landed/basket-adjusted cost in the sourcing layer. CardTrader EN/NM remains separately labelled. eBay active asks are never labelled as sold prices.",
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "scanner_status.json").write_text(json.dumps(status, indent=2), encoding="utf-8")
