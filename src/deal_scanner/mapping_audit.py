@@ -218,6 +218,89 @@ def write_mapping_audit(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def _apply_snapshot_mapping_guard(conn, snapshot_date: str, rows: list[dict]) -> tuple[int, int, int]:
+    """Apply mapping resolutions to one snapshot with set-based SQLite updates.
+
+    The previous implementation issued one UPDATE per CardTrader blueprint. With
+    ~88k blueprints and no snapshot+blueprint index that turned a small guard into
+    tens of thousands of repeated scans over the offer table. Only blueprints that
+    actually occur in the target snapshot need mutation, so load those resolutions
+    into a temporary indexed table and update the snapshot in two set-based passes.
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ct_offers_snapshot_blueprint "
+        "ON cardtrader_offer_snapshots(snapshot_date, blueprint_id)"
+    )
+    active = {
+        int(r[0])
+        for r in conn.execute(
+            "SELECT DISTINCT blueprint_id FROM cardtrader_offer_snapshots WHERE snapshot_date=?",
+            (snapshot_date,),
+        ).fetchall()
+    }
+    if not active:
+        return 0, 0, 0
+
+    conn.execute("DROP TABLE IF EXISTS temp_cardtrader_mapping_resolution")
+    conn.execute(
+        """CREATE TEMP TABLE temp_cardtrader_mapping_resolution(
+               blueprint_id INTEGER PRIMARY KEY,
+               resolved_id_product INTEGER
+           )"""
+    )
+    values = []
+    for row in rows:
+        bid = int(row["blueprint_id"])
+        if bid not in active:
+            continue
+        resolved = row.get("resolved_id_product")
+        values.append((bid, None if resolved in (None, "") else int(resolved)))
+    conn.executemany(
+        "INSERT INTO temp_cardtrader_mapping_resolution(blueprint_id,resolved_id_product) VALUES(?,?)",
+        values,
+    )
+
+    resolved_cur = conn.execute(
+        """UPDATE cardtrader_offer_snapshots
+           SET id_product=(
+               SELECT t.resolved_id_product
+               FROM temp_cardtrader_mapping_resolution t
+               WHERE t.blueprint_id=cardtrader_offer_snapshots.blueprint_id
+           )
+           WHERE snapshot_date=?
+             AND blueprint_id IN (
+                 SELECT blueprint_id FROM temp_cardtrader_mapping_resolution
+                 WHERE resolved_id_product IS NOT NULL
+             )
+             AND (
+                 id_product IS NULL OR id_product<>(
+                     SELECT t.resolved_id_product
+                     FROM temp_cardtrader_mapping_resolution t
+                     WHERE t.blueprint_id=cardtrader_offer_snapshots.blueprint_id
+                 )
+             )""",
+        (snapshot_date,),
+    )
+    blocked_cur = conn.execute(
+        """UPDATE cardtrader_offer_snapshots
+           SET id_product=NULL
+           WHERE snapshot_date=?
+             AND id_product IS NOT NULL
+             AND blueprint_id IN (
+                 SELECT blueprint_id FROM temp_cardtrader_mapping_resolution
+                 WHERE resolved_id_product IS NULL
+             )""",
+        (snapshot_date,),
+    )
+    conn.execute("DROP TABLE temp_cardtrader_mapping_resolution")
+    conn.commit()
+    return (
+        max(0, int(resolved_cur.rowcount or 0)),
+        max(0, int(blocked_cur.rowcount or 0)),
+        len(values),
+    )
+
+
 def apply_cardtrader_mapping_guard(
     conn,
     snapshot_date: str | None,
@@ -244,32 +327,16 @@ def apply_cardtrader_mapping_guard(
 
     offers_resolved = 0
     offers_blocked = 0
+    snapshot_blueprints_guarded = 0
     if snapshot_date:
-        for row in rows:
-            bid = int(row["blueprint_id"])
-            resolved = row.get("resolved_id_product")
-            if resolved not in (None, ""):
-                cur = conn.execute(
-                    """UPDATE cardtrader_offer_snapshots
-                       SET id_product=?
-                       WHERE snapshot_date=? AND blueprint_id=?
-                         AND (id_product IS NULL OR id_product<>?)""",
-                    (int(resolved), snapshot_date, bid, int(resolved)),
-                )
-                offers_resolved += max(0, int(cur.rowcount or 0))
-            else:
-                cur = conn.execute(
-                    """UPDATE cardtrader_offer_snapshots
-                       SET id_product=NULL
-                       WHERE snapshot_date=? AND blueprint_id=? AND id_product IS NOT NULL""",
-                    (snapshot_date, bid),
-                )
-                offers_blocked += max(0, int(cur.rowcount or 0))
-        conn.commit()
+        offers_resolved, offers_blocked, snapshot_blueprints_guarded = _apply_snapshot_mapping_guard(
+            conn, snapshot_date, rows
+        )
 
     return {
         "snapshot_date": snapshot_date,
         "blueprints_audited": len(rows),
+        "snapshot_blueprints_guarded": snapshot_blueprints_guarded,
         "mapping_status_counts": counts,
         "offers_reassigned_to_resolved_mapping": offers_resolved,
         "offers_blocked_from_ambiguous_mapping": offers_blocked,
