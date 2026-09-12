@@ -60,6 +60,42 @@ Potential descriptive states include thin floor / dense wall above, broad deep s
 
 Persist exact-print listing snapshots where permitted so order-book shape can be reconstructed prospectively. Test whether depth/concentration features add incremental out-of-sample value beyond existing price trend, transaction velocity, aggregate supply change, PCS/LQS/ECS/BOS and supply-runway metrics. Candidate targets include 7d/30d realised-price direction, floor movement, ECS improvement and future time-to-sale outcomes. Keep this diagnostic unless chronological walk-forward validation shows stable incremental predictive value.
 
+### Structural card fundamentals and demand resilience
+
+See issue #7: add a future **card-fundamentals / structural demand** research layer to complement market technicals. The purpose is not to claim a literal intrinsic value for collectibles, but to model persistent supply/demand traits that may help explain long-horizon price floors, resilience, peer-relative strength and downside risk.
+
+Core feature groups:
+
+- **set age / release date** as a continuous lifecycle feature;
+- **rarity and treatment** as categorical metadata, not one universal ordinal ladder across eras;
+- **distribution type** such as pack-pulled, guaranteed box/ETB promo, stamped promo, league/event, tournament/prize or other fixed-distribution channel;
+- **credible pull-rate evidence** stored with source/date/confidence rather than assumed exact;
+- **observable print/reprint lifecycle state** based on evidence, without inventing precise reprint probabilities before calibration;
+- **Pokémon / character popularity** as a continuous, refreshable demand feature rather than a fixed hand-written tier list;
+- **character-family context** where useful, such as Eeveelutions, starters or legendaries, but only after validation;
+- **artwork class / treatment** and **artist identity** as features, with artist effects estimated only after controlling for Pokémon, rarity/treatment, set, scarcity and price band;
+- **competitive usage** including tournament deck share, copies per successful deck and recent top-cut usage;
+- **legality / days to rotation**, including a future test of `competitive usage × rotation proximity` to identify utility-driven premiums that may decay.
+
+Modeling guardrails:
+
+- keep collector-demand and competitive-demand features separate and let models learn interactions;
+- do not use hand-built formulas such as `rarity_ordinal × pull_rate_inverse` or `popularity × artist_score / competitive_index` unless they demonstrate incremental value empirically;
+- do not assume rarity labels are linearly ordered across eras;
+- preserve missingness and source confidence for sparse/uncertain features instead of fabricating certainty;
+- avoid target leakage: popularity, artist, competitive and lifecycle features used for a forecast at date D must only use information available by D;
+- start with interpretable diagnostics / peer-group effects before moving to complex ML.
+
+Potential uses:
+
+- construct better leakage-safe peer groups for relative-strength analysis;
+- separate **collector-driven** from **utility-driven** premiums;
+- study structural resilience during market drawdowns;
+- test whether fundamentals improve T+90/T+180 forecasts;
+- test whether they improve survival/time-to-sale and inventory-risk estimates when combined with condition and market-depth features.
+
+Useful peer dimensions may eventually include modern/vintage regime, price band, set age, rarity/treatment, distribution type, collector-demand regime, competitive-dependency regime and liquidity/supply depth. Keep this layer diagnostic until chronological walk-forward validation shows stable incremental out-of-sample value over simpler baselines.
+
 ### Experience-driven decision analytics
 
 See issue #4: **relative strength → survival/time-to-sale modeling → inventory risk → probability-based expected value**.
