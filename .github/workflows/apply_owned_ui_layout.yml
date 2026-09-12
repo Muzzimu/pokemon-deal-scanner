@@ -1,0 +1,35 @@
+name: Apply owned UI layout patch
+
+on:
+  push:
+    paths:
+      - 'scripts/apply_owned_ui_layout.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply dashboard UI patch
+        run: python scripts/apply_owned_ui_layout.py
+      - name: Commit patched dashboard
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain -- dashboard/app.py)" ]; then
+            echo "No dashboard patch needed"
+            exit 0
+          fi
+          git config user.name "pokemon-deal-scanner-dashboard"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard/app.py
+          git commit -m "Refine owned-card priority layout"
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
