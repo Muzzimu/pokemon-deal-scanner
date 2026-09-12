@@ -29,6 +29,8 @@ ROUTE_FIELDS = [
     "exit_confidence_score", "exit_confidence_label", "bridge_opportunity_score",
     "bridge_opportunity_label", "quality_gate_reason", "confidence", "ct_lag_label",
     "manual_verification_required", "price_band",
+    # Optional live Cardmarket depth fields when present in market_routes.csv.
+    "cm_live_sellers", "cm_live_units", "cm_live_robust_floor_eur",
 ]
 
 DISCOVERY_FIELDS = [
@@ -36,6 +38,20 @@ DISCOVERY_FIELDS = [
     "best_validated_sourcing_price", "deal_score", "status", "trend", "avg30",
     "cm_en_nm_floor", "ct_en_nm_floor", "ct_visible_sellers", "ct_visible_units",
     "gap_pct", "popularity_score",
+]
+
+# Dashboard-only diagnostics. These are observations/explanations, not new model scores.
+PROFILE_SIGNAL_FIELDS = [
+    "market_trend_label", "market_trend_confidence", "market_trend_coverage_count",
+    "cm_short_momentum_pct", "cm_30d_change_pct", "cm_price_basis",
+    "sales_7d", "sales_prev_23d", "sales_velocity_ratio",
+    "active_supply_now", "active_supply_30d_ago", "supply_change_pct",
+]
+PROFILE_QUALITY_FIELDS = [
+    "eu_dispersion_pct", "us_dispersion_pct",
+    "tcgplayer_sales_30d", "tcgplayer_sales_90d", "tcgplayer_avg_daily_sold",
+    "tcgplayer_monthly_sales_equiv", "tcgplayer_current_quantity",
+    "tcgplayer_current_sellers", "tcgplayer_supply_coverage_days", "tcgplayer_supply_state",
 ]
 
 OUTCOME_FIELDS = [
@@ -78,28 +94,15 @@ def blank(value) -> bool:
 
 
 def enrich_identity(conn: sqlite3.Connection, rows: list[dict]) -> list[dict]:
-    """Fill display identity fields from products without changing market/scoring fields."""
-    ids = sorted(
-        {
-            int(row["id_product"])
-            for row in rows
-            if row.get("id_product") not in (None, "")
-        }
-    )
+    ids = sorted({int(row["id_product"]) for row in rows if row.get("id_product") not in (None, "")})
     if not ids or not table_exists(conn, "products"):
         return rows
-
     placeholders = ",".join("?" for _ in ids)
     products = conn.execute(
-        f"""
-        SELECT id_product, name, expansion_name, number
-        FROM products
-        WHERE id_product IN ({placeholders})
-        """,
+        f"SELECT id_product, name, expansion_name, number FROM products WHERE id_product IN ({placeholders})",
         tuple(ids),
     ).fetchall()
     by_id = {int(row["id_product"]): dict(row) for row in products}
-
     out = []
     for source in rows:
         row = dict(source)
@@ -147,10 +150,10 @@ def maturity(conn: sqlite3.Connection) -> dict:
     row = conn.execute(
         """
         SELECT
-          SUM(CASE WHEN horizon_days=7 AND realised_value_eur IS NOT NULL THEN 1 ELSE 0 END) AS t7,
-          COUNT(DISTINCT CASE WHEN horizon_days=7 AND realised_value_eur IS NOT NULL THEN id_product END) AS t7_cards,
-          SUM(CASE WHEN horizon_days=30 AND realised_value_eur IS NOT NULL THEN 1 ELSE 0 END) AS t30,
-          COUNT(DISTINCT CASE WHEN horizon_days=30 AND realised_value_eur IS NOT NULL THEN id_product END) AS t30_cards
+          SUM(CASE WHEN horizon_days=7 AND realised_value_eur IS NOT NULL THEN 1 ELSE 0 END),
+          COUNT(DISTINCT CASE WHEN horizon_days=7 AND realised_value_eur IS NOT NULL THEN id_product END),
+          SUM(CASE WHEN horizon_days=30 AND realised_value_eur IS NOT NULL THEN 1 ELSE 0 END),
+          COUNT(DISTINCT CASE WHEN horizon_days=30 AND realised_value_eur IS NOT NULL THEN id_product END)
         FROM model_outcomes
         """
     ).fetchone()
@@ -179,9 +182,6 @@ def latest_outcomes_by_card(conn: sqlite3.Connection, product_ids: list[int]) ->
         """,
         tuple(product_ids),
     ).fetchall()
-
-    # Keep only the newest matured result for each card x horizon x scope. This is
-    # enough for the read-only card view while keeping the public snapshot small.
     seen: set[tuple[int, int, str]] = set()
     out: dict[str, list[dict]] = {}
     for raw in rows:
@@ -194,6 +194,41 @@ def latest_outcomes_by_card(conn: sqlite3.Connection, product_ids: list[int]) ->
     return out
 
 
+def by_product(rows: list[dict]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for row in rows:
+        pid = str(row.get("id_product") or "").strip()
+        if pid:
+            out[pid] = row
+    return out
+
+
+def merge_market_profile(routes: list[dict], signals: list[dict], quality: list[dict]) -> list[dict]:
+    signal_map = by_product(signals)
+    quality_map = by_product(quality)
+    out = []
+    for source in routes:
+        row = dict(source)
+        pid = str(row.get("id_product") or "").strip()
+        signal = signal_map.get(pid, {})
+        quality_row = quality_map.get(pid, {})
+
+        # Prefix the market-signal labels so they cannot be confused with route confidence.
+        row["market_trend_label"] = signal.get("signal_label")
+        row["market_trend_confidence"] = signal.get("confidence")
+        row["market_trend_coverage_count"] = signal.get("coverage_count")
+        for field in (
+            "cm_short_momentum_pct", "cm_30d_change_pct", "cm_price_basis",
+            "sales_7d", "sales_prev_23d", "sales_velocity_ratio",
+            "active_supply_now", "active_supply_30d_ago", "supply_change_pct",
+        ):
+            row[field] = signal.get(field)
+        for field in PROFILE_QUALITY_FIELDS:
+            row[field] = quality_row.get(field)
+        out.append(row)
+    return out
+
+
 def build_snapshot() -> dict:
     cfg = load_cfg()
     db_path = resolve_path(cfg["paths"]["database"])
@@ -203,18 +238,18 @@ def build_snapshot() -> dict:
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-
     predictions = latest_predictions(conn)
     product_ids = [int(row["id_product"]) for row in predictions if row.get("id_product") is not None]
 
-    raw_routes = read_csv(output_dir / "market_routes.csv")
-    routes = [
-        select_fields(row, ROUTE_FIELDS)
-        for row in enrich_identity(conn, raw_routes)
-    ]
+    raw_routes = enrich_identity(conn, read_csv(output_dir / "market_routes.csv"))
+    profile_routes = merge_market_profile(
+        raw_routes,
+        read_csv(output_dir / "market_signals.csv"),
+        read_csv(output_dir / "market_quality.csv"),
+    )
+    route_fields = ROUTE_FIELDS + PROFILE_SIGNAL_FIELDS + PROFILE_QUALITY_FIELDS
+    routes = [select_fields(row, route_fields) for row in profile_routes]
 
-    # top_flips is a discovery/ranking surface, not a final route recommendation.
-    # Only safe market fields are published and the hosted payload is capped.
     raw_discovery = read_csv(output_dir / "top_flips.csv")[:75]
     discovery = [
         select_fields(row, DISCOVERY_FIELDS)
@@ -222,7 +257,7 @@ def build_snapshot() -> dict:
     ]
 
     snapshot = {
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "scanner_version": str(cfg.get("version") or "unknown"),
         "public_snapshot": True,
