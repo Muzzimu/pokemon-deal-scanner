@@ -78,5 +78,8 @@ jobs:
           fi
 
           echo "No healthy Daily Pokemon Deal Scan found for today in Europe/Dublin; dispatching fallback."
-          gh workflow run daily_scan.yml --ref main
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/daily_scan.yml/dispatches" \
+            -f ref=main
           echo "Fallback dispatch requested."
