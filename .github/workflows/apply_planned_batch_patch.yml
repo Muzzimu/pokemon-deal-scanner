@@ -36,8 +36,10 @@ jobs:
           rm -f .patch-message
           git config user.name "pokemon-deal-scanner-dashboard"
           git config user.email "actions@users.noreply.github.com"
-          git add dashboard data docs scripts src .github/workflows
-          git reset scripts/apply_planned_batch_patch.py .github/workflows/apply_planned_batch_patch.yml >/dev/null 2>&1 || true
+          # Workflow files cannot be pushed by the Actions app without workflow scope.
+          # Planned workflow edits are applied separately through the GitHub connector.
+          git add dashboard data docs scripts src tests
+          git reset scripts/apply_planned_batch_patch.py >/dev/null 2>&1 || true
           if git diff --cached --quiet; then
             echo "No feature changes to commit"
             exit 0
