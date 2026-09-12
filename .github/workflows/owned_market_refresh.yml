@@ -11,8 +11,10 @@ on:
     # Fallback only. The normal refresh runs after a successful daily scanner run.
     - cron: '20 9 * * *'
   push:
+    # New/changed owned cards deserve an immediate market refresh. Code-only edits do
+    # not: they are validated by CI and take effect on the next normal/manual refresh,
+    # avoiding an unnecessary batch of paid Parse/Cardmarket calls.
     paths:
-      - 'scripts/refresh_owned_market.py'
       - 'data/reference/owned_resale_cards.csv'
 
 permissions:
