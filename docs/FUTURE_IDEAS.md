@@ -134,6 +134,29 @@ Treat Markov regime-switching as a later challenger only. Do not encode assumpti
 
 This layer is primarily a **market diagnostic / context / research feature**. A regime label may be useful on the dashboard even if it never becomes a BUY input. No automatic BUY override, fair-value override or score reweighting merely because a regime changes.
 
+### Cross-market lead/lag and price discovery
+
+See issue #9: research whether price information consistently propagates between EU, US/global and selected Japanese/collector markets, while keeping exact identity and market frictions explicit.
+
+Start with simple, interpretable diagnostics before advanced econometrics:
+
+- lagged correlations / cross-correlations of price changes at 1d / 3d / 7d / 14d;
+- directional follow-through rate;
+- median catch-up time and magnitude;
+- current FX-normalized divergence;
+- sample count, recency and confidence;
+- cohort-level lead/lag when individual card histories are too sparse.
+
+Only test Granger-style predictive precedence, VAR/VECM/cointegration or information-share decompositions after observation density and economic comparability are sufficient. Granger significance is not causal proof, and VECM should only be used where stationarity/integration assumptions are actually met.
+
+Exact same-asset analysis requires matching printing, language, condition/grade, treatment and raw/graded status. Japanese and English versions of the same artwork are related but normally not fungible; use them as cohort/context evidence unless an explicit bridge can be demonstrated.
+
+Do not hard-code a universal market hierarchy. Leadership may differ across modern competitive cards, collector/chase art, vintage raw, graded high-end, Japanese exclusives/promos and niche illiquid cards.
+
+Potential dashboard/research outputs include likely leader/follower with confidence, typical lag, historical follow-through probability, convergence path (`EU_CATCHUP`, `US_REVERSAL`, `BOTH_ADJUST`, `NO_STABLE_RELATIONSHIP`) and stale/insufficient-data states.
+
+A lead/lag relationship is **not automatically arbitrage or a BUY signal**. Any future executable use must separately survive shipping, VAT/import costs, marketplace fees, FX, condition/language differences, seller eligibility, liquidity/time-to-sale and achievable exit economics. Retain the signal as market context even if it never improves formal recommendations.
+
 ### Experience-driven decision analytics
 
 See issue #4: **relative strength → survival/time-to-sale modeling → inventory risk → probability-based expected value**.
