@@ -1,0 +1,20 @@
+{
+  "source": "TCGdex",
+  "source_note": "Exact Cardmarket-product mappings. Dashboard uses TCGdex low/high WebP assets; no card artwork binaries are stored in this repository.",
+  "cards": {
+    "665676": {"tcgdex_id": "swsh10.5-050", "image_base": "https://assets.tcgdex.net/en/swsh/swsh10.5/050", "verified_name": "Dragonite VSTAR", "set_name": "Pokémon GO", "number": "050/078"},
+    "665687": {"tcgdex_id": "swsh10.5-076", "image_base": "https://assets.tcgdex.net/en/swsh/swsh10.5/076", "verified_name": "Dragonite V", "set_name": "Pokémon GO", "number": "076/078"},
+    "725239": {"tcgdex_id": "sv03-159", "image_base": "https://assets.tcgdex.net/en/sv/sv03/159", "verified_name": "Dragonite ex", "set_name": "Obsidian Flames", "number": "159/197"},
+    "869863": {"tcgdex_id": "me02.5-252", "image_base": "https://assets.tcgdex.net/en/me/me02.5/252", "verified_name": "Stunfisk ex", "set_name": "Ascended Heroes", "number": "252/217"},
+    "869859": {"tcgdex_id": "me02.5-248", "image_base": "https://assets.tcgdex.net/en/me/me02.5/248", "verified_name": "Drakloak", "set_name": "Ascended Heroes", "number": "248/217"},
+    "877463": {"tcgdex_id": "me03-048", "image_base": "https://assets.tcgdex.net/en/me/me03/048", "verified_name": "Gastly", "set_name": "Perfect Order", "number": "048/088"},
+    "886490": {"tcgdex_id": "me04-098", "image_base": "https://assets.tcgdex.net/en/me/me04/098", "verified_name": "Beedrill ex", "set_name": "Chaos Rising", "number": "098/086"},
+    "682075": {"tcgdex_id": "swsh12-033", "image_base": "https://assets.tcgdex.net/en/swsh/swsh12/033", "verified_name": "Alolan Vulpix V", "set_name": "Silver Tempest", "number": "033/195"},
+    "682076": {"tcgdex_id": "swsh12-034", "image_base": "https://assets.tcgdex.net/en/swsh/swsh12/034", "verified_name": "Alolan Vulpix VSTAR", "set_name": "Silver Tempest", "number": "034/195"},
+    "582085": {"tcgdex_id": "swsh8-023", "image_base": "https://assets.tcgdex.net/en/swsh/swsh8/023", "verified_name": "Rillaboom VMAX", "set_name": "Fusion Strike", "number": "023/264"},
+    "873710": {"tcgdex_id": "mep-033", "image_base": "https://assets.tcgdex.net/en/me/mep/033", "verified_name": "Mega Lucario ex", "set_name": "MEP Black Star Promos", "number": "MEP 033"},
+    "869855": {"tcgdex_id": "me02.5-244", "image_base": "https://assets.tcgdex.net/en/me/me02.5/244", "verified_name": "Cynthia's Spiritomb", "set_name": "Ascended Heroes", "number": "244/217"},
+    "869763": {"tcgdex_id": "me02.5-152", "image_base": "https://assets.tcgdex.net/en/me/me02.5/152", "verified_name": "Mega Dragonite ex", "set_name": "Ascended Heroes", "number": "152/217"},
+    "691947": {"tcgdex_id": "swsh12.5gg-GG67", "image_base": "https://assets.tcgdex.net/en/swsh/swsh12.5gg/GG67", "verified_name": "Origin Forme Palkia VSTAR", "set_name": "Crown Zenith Galarian Gallery", "number": "GG67/GG70"}
+  }
+}
