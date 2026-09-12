@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_PATH = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
 OWNED_MARKET_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
 OWNED_LEDGER_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"
+CARD_IMAGE_PATH = ROOT / "dashboard" / "data" / "card_images.json"
 
 
 def read_json(path: Path) -> dict:
@@ -26,6 +27,18 @@ def read_csv(path: Path) -> list[dict]:
         return []
     with path.open(newline="", encoding="utf-8") as fh:
         return [dict(row) for row in csv.DictReader(fh)]
+
+
+def card_image_map() -> dict[str, dict]:
+    payload = read_json(CARD_IMAGE_PATH)
+    cards = payload.get("cards") if isinstance(payload, dict) else None
+    return {str(k): dict(v) for k, v in (cards or {}).items() if isinstance(v, dict)}
+
+
+def image_url(pid: str, quality: str = "low") -> str | None:
+    record = CARD_IMAGES.get(str(pid)) or {}
+    base = str(record.get("image_base") or "").strip()
+    return f"{base}/{quality}.webp" if base else None
 
 
 def as_float(value):
@@ -93,6 +106,7 @@ st.set_page_config(page_title="Owned Pokémon cards", page_icon="🗂️", layou
 
 snapshot = read_json(SNAPSHOT_PATH)
 owned_market = read_json(OWNED_MARKET_PATH)
+CARD_IMAGES = card_image_map()
 owned_rows = list(owned_market.get("cards") or [])
 if not owned_rows:
     owned_rows = read_csv(OWNED_LEDGER_PATH)
@@ -165,13 +179,25 @@ for start in range(0, len(view), 2):
             gross_room = None if lowest_ask is None or landed is None else lowest_ask - landed
 
             with st.container(border=True):
-                st.markdown(f"### {card.get('name') or 'Unknown card'}")
-                st.caption(
-                    f"{card.get('expansion_name') or 'Unknown set'} · {card.get('number') or 'No number'} · "
-                    f"{card.get('language') or '—'} · {card.get('condition') or '—'} · "
-                    f"Cardmarket ID {pid}"
-                )
-                st.markdown(f"**{signal_label(route.get('route_signal'))}**")
+                art = image_url(pid, "low")
+                if art:
+                    art_col, title_col = st.columns([1, 2.6], vertical_alignment="top")
+                    with art_col:
+                        st.image(art, width=125)
+                    with title_col:
+                        st.markdown(f"### {card.get('name') or 'Unknown card'}")
+                        st.caption(
+                            f"{card.get('expansion_name') or 'Unknown set'} · {card.get('number') or 'No number'} · "
+                            f"{card.get('language') or '—'} · {card.get('condition') or '—'} · Cardmarket ID {pid}"
+                        )
+                        st.markdown(f"**{signal_label(route.get('route_signal'))}**")
+                else:
+                    st.markdown(f"### {card.get('name') or 'Unknown card'}")
+                    st.caption(
+                        f"{card.get('expansion_name') or 'Unknown set'} · {card.get('number') or 'No number'} · "
+                        f"{card.get('language') or '—'} · {card.get('condition') or '—'} · Cardmarket ID {pid}"
+                    )
+                    st.markdown(f"**{signal_label(route.get('route_signal'))}**")
 
                 c1, c2 = st.columns(2)
                 c1.metric("You paid", eur(item_paid))

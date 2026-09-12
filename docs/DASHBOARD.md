@@ -21,6 +21,7 @@ Core rules:
 5. **Findability over density.** Search, review-set selection and clear stage labels should make cards easy to locate without flattening every data point onto the first screen.
 6. **Do not confuse asks with exits.** Active Cardmarket/CardTrader asks are competitive-market references, not realised sale prices. Gross room to an ask is not profit.
 7. **No fabricated precision.** If finish, language, condition, shipping, route or exit evidence is unresolved, display the missing state instead of filling it with a proxy.
+8. **Artwork follows exact identity.** Small card images may be shown only from an explicit Cardmarket-product → TCGdex mapping. Never fuzzy-match artwork in the UI; if the mapping is missing, show no image.
 
 ## Data modes
 
@@ -39,6 +40,8 @@ The daily GitHub Action generates this snapshot after a successful scanner run a
 The hosted snapshot contains scanner market/model fields plus the explicitly user-approved owned/tracked-card decision dataset. It still excludes API secrets, seller identities, addresses and scanner credentials.
 
 `dashboard/data/owned_market.json` is refreshed independently from the main scanner so current owned-card ask checks cannot hold the core daily scan hostage. It contains public-safe per-card acquisition economics and comparable-market summaries only; raw seller identities and secrets are not exported.
+
+`dashboard/data/card_images.json` stores exact Cardmarket-product → TCGdex artwork references. The repository stores the mapping, not Pokémon artwork binaries. Streamlit requests small WebP assets from TCGdex at display time; missing/unverified mappings degrade to text-only cards.
 
 Snapshot schema v3 adds market-profile diagnostics to routed cards by joining existing `market_signals.csv` and `market_quality.csv` evidence. These fields explain current market state; they do not recalculate fair value, scores or route decisions.
 

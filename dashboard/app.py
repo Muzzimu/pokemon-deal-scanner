@@ -15,6 +15,7 @@ SNAPSHOT_PATH = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
 TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"
 OWNED_LEDGER_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"
 OWNED_MARKET_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
+CARD_IMAGE_PATH = ROOT / "dashboard" / "data" / "card_images.json"
 
 RESELL_SIGNALS = {"RESELL_TEST"}
 WATCH_SIGNALS = {"WATCH_ONLY"}
@@ -75,6 +76,33 @@ def read_snapshot(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
+
+
+def load_card_images(path: Path) -> dict[str, dict]:
+    payload = read_snapshot(path)
+    cards = payload.get("cards") if isinstance(payload, dict) else None
+    return {str(k): dict(v) for k, v in (cards or {}).items() if isinstance(v, dict)}
+
+
+def card_image_url(row: dict, quality: str = "low") -> str | None:
+    pid = str(row.get("id_product") or "").strip()
+    record = CARD_IMAGES.get(pid) or {}
+    base = clean_text(record.get("image_base"))
+    return f"{base}/{quality}.webp" if base else None
+
+
+def render_card_title(row: dict, heading: str = "####", image_width: int = 92, quality: str = "low") -> None:
+    image_url = card_image_url(row, quality=quality)
+    if image_url:
+        image_col, text_col = st.columns([1, 3.2], vertical_alignment="top")
+        with image_col:
+            st.image(image_url, width=image_width)
+        with text_col:
+            st.markdown(f"{heading} {short_name(row.get('name'))}")
+            st.caption(card_context(row))
+    else:
+        st.markdown(f"{heading} {short_name(row.get('name'))}")
+        st.caption(card_context(row))
 
 
 def as_float(value):
@@ -513,8 +541,7 @@ def owned_source_caption(row: dict, source_name: str, label: str) -> str:
 
 def render_route_card(row: dict) -> None:
     with st.container(border=True):
-        st.markdown(f"#### {short_name(row.get('name'))}")
-        st.caption(card_context(row))
+        render_card_title(row)
         st.markdown(f"**{signal_label(row.get('route_signal'))}**")
         st.markdown(f"**Exit route:** {human_channel(row.get('best_sell_channel'))}")
         owner_landed = as_float(row.get("landed_cost_eur"))
@@ -560,8 +587,7 @@ def render_route_card(row: dict) -> None:
 
 def render_tracked_card(row: dict) -> None:
     with st.container(border=True):
-        st.markdown(f"#### {short_name(row.get('name'))}")
-        st.caption(card_context(row))
+        render_card_title(row)
         st.markdown("**🟣 OWNED REVIEW**")
         c1, c2 = st.columns(2)
         c1.metric("You paid", format_eur(row.get("item_paid_eur")))
@@ -592,6 +618,7 @@ cfg = load_cfg()
 db_path = resolve_path(cfg, cfg["paths"]["database"])
 output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
 snapshot = read_snapshot(SNAPSHOT_PATH)
+CARD_IMAGES = load_card_images(CARD_IMAGE_PATH)
 conn: sqlite3.Connection | None = None
 
 if db_path.exists():
@@ -846,8 +873,8 @@ with tab_card:
         prediction = prediction_map.get(pid_key)
         discovery_row = discovery_map.get(pid_key)
 
-        st.subheader(short_name(card.get("name")))
-        st.caption(f"{card_context(card)} · {detail_stage(pid_key)}")
+        render_card_title(card, heading="##", image_width=190, quality="high")
+        st.caption(f"Stage: **{detail_stage(pid_key)}**")
 
         if matching_routes or prediction:
             route = dict(card)
