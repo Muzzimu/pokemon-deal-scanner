@@ -46,11 +46,17 @@ jobs:
           restore-keys: |
             scrapebadger-research-db-
 
-      - name: Collect eBay completed research evidence
-        run: python scripts/run_scrapebadger_ebay_completed.py
-
+      # Run Vinted first while validating the new source because the first live run
+      # exhausted a short provider rate-limit window after the eBay calls. The client
+      # now also honours 429s with exponential/reset-aware backoff.
       - name: Collect Vinted discovery and listing-state research
         run: python scripts/run_scrapebadger_vinted.py
+
+      - name: Short provider cooldown
+        run: sleep 5
+
+      - name: Collect eBay completed research evidence
+        run: python scripts/run_scrapebadger_ebay_completed.py
 
       - name: Verify research database
         shell: bash
