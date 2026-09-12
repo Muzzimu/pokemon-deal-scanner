@@ -1,1 +1,15 @@
 id_product,tcgdex_id,name,set_id,set_name,local_id,release_date,rarity,illustrator,category,regulation_mark,standard_legal,expanded_legal,variant_normal,variant_holo,variant_reverse,variant_first_edition,variant_wpromo,source,status,last_checked_utc
+582085,swsh8-023,Rillaboom VMAX,,Fusion Strike,023/264,,,,,,,,,,,,,TCGDEX_V2_EXACT,ERROR_HTTPERROR,2026-09-12T21:00:46+00:00
+665676,swsh10.5-050,Dragonite VSTAR,swsh10.5,Pokémon GO,050,2022-07-01,Holo Rare VSTAR,PLANETA Tsuji,Pokemon,F,0,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+665687,swsh10.5-076,Dragonite V,swsh10.5,Pokémon GO,076,2022-07-01,Ultra Rare,5ban Graphics,Pokemon,F,0,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+682075,swsh12-033,Alolan Vulpix V,swsh12,Silver Tempest,033,2022-11-11,Holo Rare V,Ryota Murayama,Pokemon,F,0,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+682076,swsh12-034,Alolan Vulpix VSTAR,swsh12,Silver Tempest,034,2022-11-11,Holo Rare VSTAR,PLANETA Hiiragi,Pokemon,F,0,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+691947,swsh12.5gg-GG67,Origin Forme Palkia VSTAR,swsh12.5gg,Crown Zenith Galarian Gallery,GG67,2023-01-20,Secret Rare,AKIRA EGAWA,Pokemon,F,0,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+725239,sv03-159,Dragonite ex,sv03,Obsidian Flames,159,2023-08-11,Double rare,5ban Graphics,Pokemon,G,0,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+869763,me02.5-152,Mega Dragonite ex,me02.5,Ascended Heroes,152,2026-01-30,Double rare,aky CG Works,Pokemon,I,1,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+869855,me02.5-244,Cynthia's Spiritomb,me02.5,Ascended Heroes,244,2026-01-30,Illustration rare,hncl,Pokemon,I,1,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+869859,me02.5-248,Drakloak,me02.5,Ascended Heroes,248,2026-01-30,Illustration rare,Jerky,Pokemon,H,1,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+869863,me02.5-252,Stunfisk ex,me02.5,Ascended Heroes,252,2026-01-30,Ultra Rare,5ban Graphics,Pokemon,J,1,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+873710,mep-033,Mega Lucario ex,mep,MEP Black Star Promos,033,2025-09-26,Promo,5ban Graphics,Pokemon,I,1,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+877463,me03-048,Gastly,me03,Perfect Order,048,2026-03-27,Common,MARINA Chikazawa,Pokemon,J,1,1,1,0,1,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
+886490,me04-098,Beedrill ex,me04,Chaos Rising,098,2026-05-22,Ultra Rare,5ban Graphics,Pokemon,J,1,1,0,1,0,0,0,TCGDEX_V2_EXACT,OK,2026-09-12T21:00:46+00:00
