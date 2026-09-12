@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -27,11 +28,23 @@ def panel(conn, cfg: dict) -> list[dict]:
     return build_cross_price_research(scored_rows(latest_rows_with_history(conn), cfg), cfg)
 
 
+def _collector_number(collector_number, version) -> str:
+    explicit = str(collector_number or "").strip()
+    if explicit:
+        return explicit
+    # Some CardTrader blueprints encode the exact collector number in version,
+    # e.g. "Holo Rare | 016/165", while collector_number itself is null.
+    text = str(version or "")
+    match = re.search(r"\b([A-Z]*\d+[A-Z]*/[A-Z]*\d+[A-Z]*)\b", text, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
 def _identity_tuple(row) -> tuple[str, str, str]:
+    version = str(row["version"] or "").strip()
     return (
         str(row["expansion_name"] or "").strip(),
-        str(row["collector_number"] or "").strip(),
-        str(row["version"] or "").strip(),
+        _collector_number(row["collector_number"], version),
+        version,
     )
 
 
@@ -40,7 +53,7 @@ def _apply_unique_identity(row: dict, candidates, source: str) -> bool:
         _identity_tuple(candidate)
         for candidate in candidates
         if str(candidate["expansion_name"] or "").strip()
-        and str(candidate["collector_number"] or "").strip()
+        and _collector_number(candidate["collector_number"], candidate["version"])
     }
     identity_pairs = {(expansion, number) for expansion, number, _ in exact}
     if len(identity_pairs) != 1:
