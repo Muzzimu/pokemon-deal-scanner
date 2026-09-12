@@ -1,0 +1,4 @@
+provider,monthly_credit_limit,unit,as_of,notes
+PARSE_CARDMARKET,300,credits,2026-09-12,Free plan account panel; simple live calls are approximately one credit
+FIRECRAWL,1000,credits,2026-09-12,Free-cycle allowance shown in account email; scanner automation does not currently consume this provider
+SCRAPEBADGER,,credits,2026-09-12,Track documented per-request credits; no monthly cap encoded without an account limit

@@ -17,9 +17,11 @@ from deal_scanner.cardmarket_live import ParseBotCardmarketClient, _extract_list
 from deal_scanner.cardtrader import CardTraderClient, normalize_marketplace
 from deal_scanner.config import load_config, resolve_path
 from deal_scanner.db import blueprint_product_map_for_expansion, expansion_ids_for_products
+from deal_scanner.provider_usage import append_provider_usage
 
 OWNED_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"
 OUTPUT_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
+USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
 
 
 def read_owned() -> list[dict]:
@@ -286,6 +288,9 @@ def main() -> int:
     ct = ct_market(conn, cfg, owned)
     conn.close()
     cm = cm_market(cfg, owned)
+    live_cfg = cfg.get("cardmarket_live", {})
+    parse_key = os.environ.get(str(live_cfg.get("api_key_env") or "PARSE_API_KEY"))
+    parse_requests = len(owned) if parse_key else 0
 
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     cards = []
@@ -309,6 +314,17 @@ def main() -> int:
             "cards": cards,
         }, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n",
         encoding="utf-8",
+    )
+    append_provider_usage(
+        USAGE_PATH,
+        provider="PARSE_CARDMARKET",
+        operation="owned_card_live_asks",
+        requests=parse_requests,
+        documented_credits=parse_requests if parse_key else 0,
+        status="OK" if parse_key else "UNAVAILABLE",
+        rows=sum(1 for value in cm.values() if str(value.get("status") or "").upper() == "OK"),
+        notes="Account UI indicates approximately one credit per simple live call; one exact-product request per owned card.",
+        observed_at_utc=now,
     )
     print(f"Wrote {OUTPUT_PATH.relative_to(ROOT)} with {len(cards)} owned cards")
     return 0

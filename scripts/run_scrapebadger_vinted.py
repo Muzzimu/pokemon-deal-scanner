@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from deal_scanner.db import connect
+from deal_scanner.provider_usage import append_provider_usage
 from deal_scanner.scrapebadger_research import (
     ScrapeBadgerClient,
     VINTED_FIELDS,
@@ -24,6 +25,7 @@ WATCHLIST = ROOT / "data" / "reference" / "vinted_watchlist.csv"
 DB_PATH = ROOT / "db" / "scrapebadger_research.sqlite"
 OUTPUT = ROOT / "output" / "vinted_candidates.csv"
 STATUS = ROOT / "output" / "scrapebadger_vinted_status.json"
+USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
 PUBLIC_FIELDS = [field for field in VINTED_FIELDS if field != "seller_id"]
 MARKET = "ie"
 
@@ -48,6 +50,10 @@ def main() -> int:
             "queries": 0,
             "rows": 0,
         })
+        append_provider_usage(
+            USAGE_PATH, provider="SCRAPEBADGER", operation="vinted_research", requests=0,
+            documented_credits=0, status="UNAVAILABLE", rows=0, notes="missing SCRAPEBADGER_API_KEY",
+        )
         print("ScrapeBadger Vinted pilot skipped: missing SCRAPEBADGER_API_KEY")
         return 0
 
@@ -178,6 +184,16 @@ def main() -> int:
         "valuation_weight": 0,
         "storage": "isolated research database",
     })
+    append_provider_usage(
+        USAGE_PATH,
+        provider="SCRAPEBADGER",
+        operation="vinted_research",
+        requests=search_requests + detail_requests,
+        documented_credits=estimated_credits,
+        status=status,
+        rows=len(all_rows),
+        notes=f"search={search_requests}; detail={detail_requests}",
+    )
     print(
         f"ScrapeBadger Vinted pilot: status={status} search={search_requests} detail={detail_requests} "
         f"rows={len(all_rows)} states={counts}"

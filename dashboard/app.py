@@ -17,6 +17,8 @@ TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"
 OWNED_LEDGER_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"
 OWNED_MARKET_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
 CARD_IMAGE_PATH = ROOT / "dashboard" / "data" / "card_images.json"
+PROVIDER_USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
+PROVIDER_LIMITS_PATH = ROOT / "data" / "reference" / "provider_limits.csv"
 
 RESELL_SIGNALS = {"RESELL_TEST"}
 WATCH_SIGNALS = {"WATCH_ONLY"}
@@ -77,6 +79,47 @@ def read_snapshot(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
+
+
+def provider_usage_summary(rows: list[dict], limits: list[dict]) -> list[dict]:
+    now = datetime.now().astimezone()
+    limit_map = {str(r.get("provider")): r for r in limits}
+    providers = sorted({str(r.get("provider")) for r in rows if r.get("provider")} | set(limit_map))
+    result = []
+    for provider in providers:
+        provider_rows = [r for r in rows if str(r.get("provider")) == provider]
+        def within_days(days: int) -> list[dict]:
+            cutoff = now.timestamp() - days * 86400
+            selected = []
+            for row in provider_rows:
+                stamp = clean_text(row.get("observed_at_utc"))
+                if not stamp:
+                    continue
+                try:
+                    parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if parsed.timestamp() >= cutoff:
+                    selected.append(row)
+            return selected
+        month_rows = [r for r in provider_rows if str(r.get("snapshot_date") or "")[:7] == now.strftime("%Y-%m")]
+        today_rows = [r for r in provider_rows if str(r.get("snapshot_date") or "") == now.strftime("%Y-%m-%d")]
+        def total(selected: list[dict], field: str) -> float:
+            return sum(as_float(r.get(field)) or 0 for r in selected)
+        limit = as_float(limit_map.get(provider, {}).get("monthly_credit_limit"))
+        month_credits = total(month_rows, "documented_credits")
+        remaining = None if limit is None else max(0.0, limit - month_credits)
+        result.append({
+            "Provider": provider.replace("_", " ").title(),
+            "Today requests": int(total(today_rows, "requests")),
+            "7d requests": int(total(within_days(7), "requests")),
+            "30d requests": int(total(within_days(30), "requests")),
+            "Month credits": month_credits if provider_rows else None,
+            "Monthly limit": limit,
+            "Remaining": remaining if provider_rows else None,
+            "Latest status": clean_text(provider_rows[-1].get("status")) if provider_rows else "NOT INSTRUMENTED",
+        })
+    return result
 
 
 def load_card_images(path: Path) -> dict[str, dict]:
@@ -869,6 +912,8 @@ db_path = resolve_path(cfg, cfg["paths"]["database"])
 output_dir = resolve_path(cfg, cfg["paths"]["output_dir"])
 snapshot = read_snapshot(SNAPSHOT_PATH)
 CARD_IMAGES = load_card_images(CARD_IMAGE_PATH)
+provider_usage_rows = read_csv(PROVIDER_USAGE_PATH)
+provider_limits = read_csv(PROVIDER_LIMITS_PATH)
 conn: sqlite3.Connection | None = None
 
 if db_path.exists():
@@ -1268,6 +1313,23 @@ with tab_card:
             st.caption("No matured outcomes for this card in the current dashboard dataset.")
 
 with tab_health:
+    st.subheader("Provider usage")
+    usage_summary = provider_usage_summary(provider_usage_rows, provider_limits)
+    if usage_summary:
+        st.dataframe(
+            usage_summary,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Month credits": st.column_config.NumberColumn(format="%.0f"),
+                "Monthly limit": st.column_config.NumberColumn(format="%.0f"),
+                "Remaining": st.column_config.NumberColumn(format="%.0f"),
+            },
+        )
+        st.caption("Credits are shown only where the provider documents the unit cost or the account UI confirms it. Firecrawl is listed as a known account limit but scanner automation does not currently instrument its usage.")
+    else:
+        st.caption("No provider-usage observations have been recorded yet.")
+
     st.subheader("Experience-store maturity")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("T+7 observations", f'{maturity["t7"]} / 500')

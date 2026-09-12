@@ -2,6 +2,11 @@
 
 Status: optional read-only UI for scanner v0.12, deployed through Streamlit Community Cloud.
 
+
+## Provider usage telemetry
+
+Provider/API consumption is an operational diagnostic, not a market or BUY signal. Persist request counts and documented/provider-confirmed credit units by run, keep providers separate, and show daily/7d/30d/month usage under Model health. Never invent a credit conversion. Optimisation should remove duplicate/low-value calls before weakening identity/language/condition/finish validation.
+
 ## Purpose
 
 Make the existing scanner easier to inspect without moving pricing, identity, source-role, or BUY logic into the UI.

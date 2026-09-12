@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from deal_scanner.db import connect
+from deal_scanner.provider_usage import append_provider_usage
 from deal_scanner.scrapebadger_research import (
     EBAY_COMPLETED_FIELDS,
     ScrapeBadgerClient,
@@ -23,6 +24,7 @@ WATCHLIST = ROOT / "data" / "reference" / "ebay_watchlist.csv"
 DB_PATH = ROOT / "db" / "scrapebadger_research.sqlite"
 OUTPUT = ROOT / "output" / "ebay_completed_candidates_scrapebadger.csv"
 STATUS = ROOT / "output" / "scrapebadger_ebay_status.json"
+USAGE_PATH = ROOT / "dashboard" / "data" / "provider_usage.csv"
 PUBLIC_FIELDS = [field for field in EBAY_COMPLETED_FIELDS if field != "seller_name"]
 
 # Keep the first pilot deliberately small. These three domains cover local Ireland,
@@ -65,6 +67,10 @@ def main() -> int:
             "queries": 0,
             "rows": 0,
         })
+        append_provider_usage(
+            USAGE_PATH, provider="SCRAPEBADGER", operation="ebay_completed_research", requests=0,
+            documented_credits=0, status="UNAVAILABLE", rows=0, notes="missing SCRAPEBADGER_API_KEY",
+        )
         print("ScrapeBadger eBay completed pilot skipped: missing SCRAPEBADGER_API_KEY")
         return 0
 
@@ -125,6 +131,16 @@ def main() -> int:
         "valuation_weight": 0,
         "storage": "isolated research database",
     })
+    append_provider_usage(
+        USAGE_PATH,
+        provider="SCRAPEBADGER",
+        operation="ebay_completed_research",
+        requests=requests_made,
+        documented_credits=requests_made * 5,
+        status=status,
+        rows=len(rows),
+        notes=f"domains={','.join(DOMAINS)}; watch_cards={len(watches)}",
+    )
     print(
         f"ScrapeBadger eBay completed pilot: status={status} requests={requests_made} "
         f"rows={len(rows)} exact={sum(r['identity_status'] == 'EXACT_TITLE_MATCH' for r in rows)}"
