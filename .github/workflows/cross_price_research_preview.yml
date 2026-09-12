@@ -40,6 +40,9 @@ jobs:
           test -f db/pokemon_deal_scanner.sqlite
           python scripts/enrich_cross_price_cardtrader.py --output dashboard/data/cross_price_research_preview.csv
 
+      - name: Apply balanced panel to hosted dashboard snapshot
+        run: python scripts/apply_cross_price_to_dashboard.py
+
       - name: Print band summary
         run: |
           python - <<'PY'
@@ -55,18 +58,18 @@ jobs:
                   print(r['name'], r['screening_acquisition_eur'], r['reference_value_eur'], r['gross_headroom_eur'], r['acquisition_basis'])
           PY
 
-      - name: Publish preview data
+      - name: Publish preview and dashboard data
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "pokemon-deal-scanner-research"
           git config user.email "actions@users.noreply.github.com"
-          git add dashboard/data/cross_price_research_preview.csv
+          git add dashboard/data/cross_price_research_preview.csv dashboard/data/dashboard_snapshot.json
           if git diff --cached --quiet; then
-            echo "Cross-price preview unchanged"
+            echo "Cross-price preview and dashboard snapshot unchanged"
             exit 0
           fi
-          git commit -m "Update cross-price research preview [skip ci]"
+          git commit -m "Update cross-price dashboard research [skip ci]"
           git fetch origin main
           git -c rebase.autoStash=true rebase origin/main
           git push origin HEAD:main
