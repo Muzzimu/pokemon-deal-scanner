@@ -27,13 +27,83 @@ def panel(conn, cfg: dict) -> list[dict]:
     return build_cross_price_research(scored_rows(latest_rows_with_history(conn), cfg), cfg)
 
 
-def enrich_exact_identity(conn, rows: list[dict]) -> None:
-    """Fill missing set/number only when CardTrader exact mapping resolves uniquely."""
+def _identity_tuple(row) -> tuple[str, str, str]:
+    return (
+        str(row["expansion_name"] or "").strip(),
+        str(row["collector_number"] or "").strip(),
+        str(row["version"] or "").strip(),
+    )
+
+
+def _apply_unique_identity(row: dict, candidates, source: str) -> bool:
+    exact = {
+        _identity_tuple(candidate)
+        for candidate in candidates
+        if str(candidate["expansion_name"] or "").strip()
+        and str(candidate["collector_number"] or "").strip()
+    }
+    identity_pairs = {(expansion, number) for expansion, number, _ in exact}
+    if len(identity_pairs) != 1:
+        return False
+
+    expansion_name, number = next(iter(identity_pairs))
+    if not row.get("expansion_name"):
+        row["expansion_name"] = expansion_name
+    if not row.get("number"):
+        row["number"] = number
+
+    versions = {version for _, _, version in exact if version}
+    if len(versions) == 1:
+        row["cardtrader_version"] = next(iter(versions))
+    row["identity_source"] = source
+    return True
+
+
+def enrich_exact_identity(conn, rows: list[dict], snapshot_date: str) -> None:
+    """Enrich identity without crossing exact-print guardrails.
+
+    A Cardmarket product can group several sibling printings. When the candidate
+    acquisition comes from CardTrader, the offer producing the actual EN/NM floor
+    still carries its exact blueprint. Prefer that floor-offer blueprint over the
+    broader product mapping. Only fill set/number when the relevant evidence
+    resolves to one unique set + collector-number pair.
+    """
     for row in rows:
         if row.get("expansion_name") and row.get("number"):
             row["identity_source"] = "CARDMARKET_CATALOG"
             continue
+
         pid = int(row["id_product"])
+        source = str(row.get("screening_acquisition_source") or "").upper()
+        screening = row.get("screening_acquisition_eur")
+
+        # Highest-value identity evidence: exact CardTrader EN/NM offer(s) at the
+        # candidate floor price. This can disambiguate a shared Cardmarket product.
+        if "CARDTRADER_EN_NM" in source and screening not in (None, ""):
+            floor_rows = conn.execute(
+                """
+                SELECT DISTINCT
+                       trim(coalesce(b.expansion_name,'')) AS expansion_name,
+                       trim(coalesce(b.collector_number,'')) AS collector_number,
+                       trim(coalesce(b.version,'')) AS version
+                FROM cardtrader_offer_snapshots o
+                JOIN cardtrader_blueprints b ON b.blueprint_id=o.blueprint_id
+                WHERE o.snapshot_date=?
+                  AND o.id_product=?
+                  AND o.language='en'
+                  AND lower(o.condition) IN ('near mint','near_mint','nm')
+                  AND o.graded=0
+                  AND o.on_vacation=0
+                  AND o.price_eur IS NOT NULL
+                  AND abs(o.price_eur - ?) < 0.005
+                """,
+                (snapshot_date, pid, float(screening)),
+            ).fetchall()
+            if _apply_unique_identity(row, floor_rows, "CARDTRADER_FLOOR_OFFER_EXACT"):
+                continue
+
+        # Fallback: use the whole exact CardTrader -> Cardmarket crosswalk only if
+        # every mapped blueprint agrees on one set/collector-number pair.
         mapped = conn.execute(
             """
             SELECT DISTINCT
@@ -46,23 +116,14 @@ def enrich_exact_identity(conn, rows: list[dict]) -> None:
             """,
             (pid,),
         ).fetchall()
-        exact = {
-            (str(r["expansion_name"] or "").strip(), str(r["collector_number"] or "").strip())
-            for r in mapped
-            if str(r["expansion_name"] or "").strip() and str(r["collector_number"] or "").strip()
-        }
-        if len(exact) == 1:
-            expansion_name, number = next(iter(exact))
-            if not row.get("expansion_name"):
-                row["expansion_name"] = expansion_name
-            if not row.get("number"):
-                row["number"] = number
-            versions = {str(r["version"] or "").strip() for r in mapped if str(r["version"] or "").strip()}
-            if len(versions) == 1:
-                row["cardtrader_version"] = next(iter(versions))
-            row["identity_source"] = "CARDTRADER_EXACT_MAPPING"
-        else:
-            row["identity_source"] = "UNRESOLVED" if not (row.get("expansion_name") or row.get("number")) else "PARTIAL_CARDMARKET_CATALOG"
+        if _apply_unique_identity(row, mapped, "CARDTRADER_EXACT_MAPPING"):
+            continue
+
+        row["identity_source"] = (
+            "UNRESOLVED_SHARED_PRODUCT"
+            if not (row.get("expansion_name") or row.get("number"))
+            else "PARTIAL_CARDMARKET_CATALOG"
+        )
 
 
 def main() -> int:
@@ -126,7 +187,7 @@ def main() -> int:
         )
 
         selected = panel(conn, cfg)
-        enrich_exact_identity(conn, selected)
+        enrich_exact_identity(conn, selected, snapshot_date)
         write_csv(output_path, selected, CROSS_PRICE_FIELDS)
     finally:
         conn.close()
