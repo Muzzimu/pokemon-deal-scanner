@@ -143,3 +143,8 @@ Deferred ideas and maturity gates are indexed in `docs/FUTURE_IDEAS.md`. The nex
 `relative strength -> inventory risk -> probability-based expected value`
 
 Keep the dashboard replaceable: if Streamlit later becomes limiting, the underlying scanner/database contracts should allow another UI without changing model semantics.
+
+
+### Tracked Priority Review
+
+The Today → Priority Review can switch between routed priority cards, the exact tracked resale-review watchlist, or both. `data/reference/tracked_review_cards.csv` is intentionally public-safe: it contains exact card identity and a generic tracking role only. Purchase prices, ownership quantities and seller-level information are not exported to the hosted snapshot. Bundle-only €1 hero cards are intentionally excluded from this review list. Tracked cards without a current route show current Cardmarket observations without inventing a BUY/fair-value/exit signal.

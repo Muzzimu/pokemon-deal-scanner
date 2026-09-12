@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.yaml"
 DEFAULT_OUTPUT = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
 RESEARCH_WATCH_PATH = ROOT / "data" / "reference" / "research_watchlist.csv"
+TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"
 
 PREDICTION_FIELDS = [
     "snapshot_date", "id_product", "name", "expansion_name", "number", "model_version",
@@ -291,6 +292,48 @@ def research_watch_rows(conn: sqlite3.Connection, path: Path) -> list[dict]:
     return out
 
 
+def tracked_review_rows(conn: sqlite3.Connection, path: Path) -> list[dict]:
+    """Public-safe exact-card watch rows for dashboard Priority Review."""
+    rows = read_csv(path)
+    if not rows:
+        return []
+    out: list[dict] = []
+    for source in rows:
+        try:
+            pid = int(source.get("id_product") or 0)
+        except (TypeError, ValueError):
+            continue
+        if pid <= 0:
+            continue
+        price = None
+        if table_exists(conn, "price_snapshots"):
+            price = conn.execute(
+                """
+                SELECT snapshot_date, trend, avg1, avg7, avg30
+                FROM price_snapshots
+                WHERE id_product=?
+                ORDER BY snapshot_date DESC
+                LIMIT 1
+                """,
+                (pid,),
+            ).fetchone()
+        price_dict = dict(price) if price else {}
+        out.append({
+            "snapshot_date": price_dict.get("snapshot_date") or "",
+            "id_product": pid,
+            "name": source.get("name") or f"Cardmarket ID {pid}",
+            "expansion_name": source.get("expansion_name") or "",
+            "number": source.get("number") or "",
+            "tracking_role": source.get("tracking_role") or "RESALE_REVIEW",
+            "status": "TRACKED_REVIEW",
+            "trend": price_dict.get("trend"),
+            "avg1": price_dict.get("avg1"),
+            "avg7": price_dict.get("avg7"),
+            "avg30": price_dict.get("avg30"),
+        })
+    return out
+
+
 def build_snapshot() -> dict:
     cfg = load_cfg()
     db_path = resolve_path(cfg["paths"]["database"])
@@ -328,15 +371,18 @@ def build_snapshot() -> dict:
         for row in enrich_identity(conn, raw_discovery)
     ]
 
+    tracked = tracked_review_rows(conn, TRACKED_REVIEW_PATH)
+
     snapshot = {
         "schema_version": 3,
         "generated_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "scanner_version": str(cfg.get("version") or "unknown"),
         "public_snapshot": True,
-        "privacy_note": "Market/model fields only; no secrets, personal inventory, or seller-level data.",
+        "privacy_note": "Market/model fields plus public-safe tracked-card identities; no purchase prices, inventory quantities, secrets, or seller-level data.",
         "latest_predictions": predictions,
         "market_routes": routes,
         "discovery_candidates": discovery,
+        "tracked_cards": tracked,
         "maturity": maturity(conn),
         "source_sync_state": sync_state(conn),
         "latest_outcomes_by_card": latest_outcomes_by_card(conn, product_ids),

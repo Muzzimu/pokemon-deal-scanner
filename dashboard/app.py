@@ -12,6 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.yaml"
 SNAPSHOT_PATH = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
+TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"
 
 RESELL_SIGNALS = {"RESELL_TEST"}
 WATCH_SIGNALS = {"WATCH_ONLY"}
@@ -505,6 +506,20 @@ def render_route_card(row: dict) -> None:
                 st.code(raw_reason)
 
 
+def render_tracked_card(row: dict) -> None:
+    with st.container(border=True):
+        st.markdown(f"#### {short_name(row.get('name'))}")
+        st.caption(card_context(row))
+        st.markdown("**🟣 TRACKED REVIEW**")
+        c1, c2 = st.columns(2)
+        c1.metric("Cardmarket trend", format_eur(row.get("trend")))
+        c2.metric("30d average", format_eur(row.get("avg30")))
+        c3, c4 = st.columns(2)
+        c3.metric("7d average", format_eur(row.get("avg7")))
+        c4.metric("1d average", format_eur(row.get("avg1")))
+        st.caption("Tracked for review. No BUY, fair-value or exit signal is fabricated when the card is not in the routed model.")
+
+
 st.set_page_config(page_title="Pokémon Deal Scanner", page_icon="🃏", layout="wide")
 cfg = load_cfg()
 db_path = resolve_path(cfg, cfg["paths"]["database"])
@@ -521,6 +536,7 @@ if db_path.exists():
         read_csv(output_dir / "market_quality.csv"),
     )
     discovery = read_csv(output_dir / "top_flips.csv")[:75]
+    tracked = read_csv(TRACKED_REVIEW_PATH)
     maturity = matured_stats(conn)
     sync = latest_sync_state(conn)
     outcomes_by_card: dict[str, list[dict]] = {}
@@ -531,6 +547,7 @@ elif snapshot:
     predictions = list(snapshot.get("latest_predictions") or [])
     routes = list(snapshot.get("market_routes") or [])
     discovery = list(snapshot.get("discovery_candidates") or [])
+    tracked = list(snapshot.get("tracked_cards") or [])
     maturity = dict(snapshot.get("maturity") or {})
     sync = list(snapshot.get("source_sync_state") or [])
     outcomes_by_card = dict(snapshot.get("latest_outcomes_by_card") or {})
@@ -567,33 +584,74 @@ with tab_today:
     st.divider()
     st.subheader("Priority review")
     non_edge_signals = sorted({s for s in route_signals if s and s != "NO_EDGE"})
-    f1, f2, f3 = st.columns([2, 2, 3])
+    f0, f1, f2, f3 = st.columns([2, 2, 2, 3])
+    review_set = f0.selectbox(
+        "Review set",
+        options=["Routed + tracked", "Tracked cards", "Routed priority"],
+        index=0,
+        help="Tracked cards are the exact resale-review cards on the public-safe watchlist; bundle-only €1 hero cards are excluded.",
+    )
     selected_signals = f1.multiselect("Signals", options=non_edge_signals, default=non_edge_signals, format_func=signal_label)
     price_bands = sorted({clean_text(r.get("price_band")) for r in routes if clean_text(r.get("price_band"))})
     selected_bands = f2.multiselect("Price bands", options=price_bands, default=price_bands)
     search_text = f3.text_input("Find card", placeholder="e.g. Dragonite, Pikachu, Charizard").strip().lower()
 
-    priority = []
-    for row in routes:
-        signal = str(row.get("route_signal") or "").upper()
-        if signal == "NO_EDGE" or (selected_signals and signal not in selected_signals):
-            continue
-        band = clean_text(row.get("price_band"))
-        if selected_bands and band not in selected_bands:
-            continue
-        if search_text and search_text not in str(row.get("name") or "").lower():
-            continue
-        priority.append(row)
-    priority.sort(key=route_sort_key)
+    routed_priority = []
+    if review_set in {"Routed + tracked", "Routed priority"}:
+        for row in routes:
+            signal = str(row.get("route_signal") or "").upper()
+            if signal == "NO_EDGE" or (selected_signals and signal not in selected_signals):
+                continue
+            band = clean_text(row.get("price_band"))
+            if selected_bands and band not in selected_bands:
+                continue
+            if search_text and search_text not in str(row.get("name") or "").lower():
+                continue
+            routed_priority.append(dict(row))
+        routed_priority.sort(key=route_sort_key)
 
-    if priority:
-        for start in range(0, min(len(priority), 6), 3):
+    tracked_map = {str(r.get("id_product") or "").strip(): dict(r) for r in tracked if r.get("id_product") not in (None, "")}
+    route_map = {str(r.get("id_product") or "").strip(): dict(r) for r in routes if r.get("id_product") not in (None, "")}
+    tracked_priority = []
+    if review_set in {"Routed + tracked", "Tracked cards"}:
+        for pid_key, tracked_row in tracked_map.items():
+            if search_text and search_text not in str(tracked_row.get("name") or "").lower():
+                continue
+            route_row = route_map.get(pid_key)
+            if route_row:
+                merged = dict(tracked_row)
+                merged.update({k: v for k, v in route_row.items() if v not in (None, "")})
+                merged["_tracked"] = True
+                tracked_priority.append(merged)
+            else:
+                tracked_row["_tracked"] = True
+                tracked_priority.append(tracked_row)
+        tracked_priority.sort(key=lambda r: short_name(r.get("name")).lower())
+
+    combined_priority = []
+    seen_priority = set()
+    for row in tracked_priority + routed_priority:
+        pid_key = str(row.get("id_product") or "").strip()
+        if pid_key and pid_key in seen_priority:
+            continue
+        if pid_key:
+            seen_priority.add(pid_key)
+        combined_priority.append(row)
+
+    if combined_priority:
+        display_limit = len(combined_priority) if review_set == "Tracked cards" else min(len(combined_priority), 18)
+        for start in range(0, display_limit, 3):
             cols = st.columns(3)
-            for offset, row in enumerate(priority[start:start + 3]):
+            for offset, row in enumerate(combined_priority[start:start + 3]):
                 with cols[offset]:
-                    render_route_card(row)
+                    if clean_text(row.get("route_signal")):
+                        if row.get("_tracked"):
+                            st.caption("🟣 Tracked review card")
+                        render_route_card(row)
+                    else:
+                        render_tracked_card(row)
     else:
-        st.info("No current routed cards match these filters.")
+        st.info("No cards match these Priority Review filters.")
 
     st.divider()
     st.subheader("Discovery queue")
@@ -641,13 +699,15 @@ with tab_card:
         if pid_key:
             route_rows_by_pid.setdefault(pid_key, []).append(row)
     discovery_map = {str(r.get("id_product")): r for r in discovery if r.get("id_product") not in (None, "")}
+    tracked_detail_map = {str(r.get("id_product")): r for r in tracked if r.get("id_product") not in (None, "")}
     detail_ids = sorted(
-        set(prediction_map) | set(route_rows_by_pid) | set(discovery_map),
+        set(prediction_map) | set(route_rows_by_pid) | set(discovery_map) | set(tracked_detail_map),
         key=lambda pid_key: (
             short_name(
                 (route_rows_by_pid.get(pid_key) or [{}])[0].get("name")
                 or prediction_map.get(pid_key, {}).get("name")
                 or discovery_map.get(pid_key, {}).get("name")
+                or tracked_detail_map.get(pid_key, {}).get("name")
             ).lower(),
             int(pid_key),
         ),
@@ -659,6 +719,7 @@ with tab_card:
         def combined_card(pid_key: str) -> dict:
             merged: dict = {}
             for source in (
+                tracked_detail_map.get(pid_key),
                 discovery_map.get(pid_key),
                 prediction_map.get(pid_key),
                 (route_rows_by_pid.get(pid_key) or [None])[0],
@@ -674,10 +735,14 @@ with tab_card:
         detail_cards = {pid_key: combined_card(pid_key) for pid_key in detail_ids}
 
         def detail_stage(pid_key: str) -> str:
+            if pid_key in route_rows_by_pid and pid_key in tracked_detail_map:
+                return "ROUTED · TRACKED"
             if pid_key in route_rows_by_pid:
                 return "ROUTED"
             if pid_key in prediction_map:
                 return "FORECAST"
+            if pid_key in tracked_detail_map:
+                return "TRACKED"
             status = str(discovery_map.get(pid_key, {}).get("status") or "").upper()
             if status == "RESEARCH_WATCH":
                 return "RESEARCH WATCH"
@@ -691,7 +756,7 @@ with tab_card:
             "Card",
             detail_ids,
             format_func=detail_label,
-            help="Includes routed cards, immutable forecasts, discovery candidates and explicit research watches present in the current dashboard dataset.",
+            help="Includes routed cards, tracked review cards, immutable forecasts, discovery candidates and explicit research watches present in the current dashboard dataset.",
         )
         pid_key = str(selected_pid)
         pid = int(pid_key)
