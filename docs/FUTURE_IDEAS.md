@@ -39,6 +39,27 @@ Potential future outputs:
 
 Current production acquisition target remains English + NM unless a later validated model/version explicitly changes that rule. Condition-aware outputs should begin as research/diagnostics and only enter valuation or BUY logic after chronological out-of-sample validation.
 
+### Ask-side depth and supply concentration
+
+See issue #6: research the **shape, concentration and depletion of visible ask-side supply**. Do not describe this as true order-book imbalance because collectible marketplaces do not expose a symmetric bid/ask book.
+
+Candidate diagnostics:
+
+- **floor depth** — copies and unique sellers within a narrow band above the best executable ask;
+- **near-floor depth** — copies/sellers within a wider band such as +10%;
+- **next-wall gap** — price jump from the current floor to the next meaningful dense supply cluster;
+- **price-tier depth profile** — copies/sellers by price band rather than one aggregate listing count;
+- **seller concentration** — top-1 share, top-3 share, median copies/seller and optional HHI/concentration-adjusted depth;
+- **copies-vs-sellers decomposition** — distinguish depletion, consolidation and fragmentation;
+- **supply runway** — continue to prefer copies divided by observed sales velocity over seller-count-only ratios;
+- **historical depletion velocity** — daily/weekly changes in total copies, near-floor copies and unique sellers.
+
+Preserve raw quantities even when using capped/log-transformed seller contributions for concentration diagnostics. A large seller really is supply; the adjustment is only to avoid confusing one seller with many independent sources of liquidity.
+
+Potential descriptive states include thin floor / dense wall above, broad deep supply, supply depletion with stable sellers, seller attrition with stable copies, consolidating supply, fragmenting supply, and tightening supply with continued sales. Keep these labels observational: do not infer "whale buying", "panic selling", "fake walls" or other causal stories without external evidence.
+
+Persist exact-print listing snapshots where permitted so order-book shape can be reconstructed prospectively. Test whether depth/concentration features add incremental out-of-sample value beyond existing price trend, transaction velocity, aggregate supply change, PCS/LQS/ECS/BOS and supply-runway metrics. Candidate targets include 7d/30d realised-price direction, floor movement, ECS improvement and future time-to-sale outcomes. Keep this diagnostic unless chronological walk-forward validation shows stable incremental predictive value.
+
 ### Experience-driven decision analytics
 
 See issue #4: **relative strength → survival/time-to-sale modeling → inventory risk → probability-based expected value**.
