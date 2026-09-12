@@ -1,0 +1,48 @@
+name: Apply planned batch patch
+
+on:
+  push:
+    paths:
+      - scripts/apply_planned_batch_patch.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements-dashboard.txt
+      - name: Apply planned patch
+        run: python scripts/apply_planned_batch_patch.py
+      - name: Validate repository
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m py_compile dashboard/app.py scripts/*.py src/deal_scanner/*.py
+          pytest -q
+      - name: Commit feature patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          message="$(cat .patch-message 2>/dev/null || echo 'Apply planned future-dev patch')"
+          rm -f .patch-message
+          git config user.name "pokemon-deal-scanner-dashboard"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard data docs scripts src .github/workflows
+          git reset scripts/apply_planned_batch_patch.py .github/workflows/apply_planned_batch_patch.yml >/dev/null 2>&1 || true
+          if git diff --cached --quiet; then
+            echo "No feature changes to commit"
+            exit 0
+          fi
+          git commit -m "$message"
+          git fetch origin main
+          git -c rebase.autoStash=true rebase origin/main
+          git push origin HEAD:main
