@@ -1,0 +1,71 @@
+name: Cross-price research preview
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/cross_price_research_preview.yml'
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.12'
+  PYTHONPATH: src
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore latest scanner database state
+        uses: actions/cache/restore@v4
+        with:
+          path: db/pokemon_deal_scanner.sqlite
+          key: cross-price-preview-${{ github.run_id }}
+          restore-keys: |
+            pokemon-scanner-db-
+
+      - name: Generate cross-price research panel
+        run: |
+          test -f db/pokemon_deal_scanner.sqlite
+          python scripts/generate_cross_price_research.py --output dashboard/data/cross_price_research_preview.csv
+
+      - name: Print band summary
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          rows = list(csv.DictReader(open('dashboard/data/cross_price_research_preview.csv', encoding='utf-8')))
+          print('rows=', len(rows))
+          print('bands=', dict(Counter(r['reference_band'] for r in rows)))
+          print('validated=', sum(r['acquisition_basis'] == 'VALIDATED_EN_NM' for r in rows))
+          for band in sorted(set(r['reference_band'] for r in rows)):
+              print('\n', band)
+              for r in [x for x in rows if x['reference_band'] == band][:5]:
+                  print(r['name'], r['screening_acquisition_eur'], r['reference_value_eur'], r['gross_headroom_eur'], r['acquisition_basis'])
+          PY
+
+      - name: Publish preview data
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "pokemon-deal-scanner-research"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard/data/cross_price_research_preview.csv
+          if git diff --cached --quiet; then
+            echo "Cross-price preview unchanged"
+            exit 0
+          fi
+          git commit -m "Update cross-price research preview [skip ci]"
+          git fetch origin main
+          git -c rebase.autoStash=true rebase origin/main
+          git push origin HEAD:main
