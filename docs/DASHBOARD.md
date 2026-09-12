@@ -58,13 +58,22 @@ The dashboard may reorder existing signals for readability, but it must never pr
 
 ### Card detail
 
+The Card detail selector covers every exact Cardmarket product present in the current dashboard dataset, not only cards that already have an immutable model forecast. It can therefore show routed cards, forecast-only cards, pre-route discovery candidates and explicit research watches while keeping those stages visibly distinct.
+
+For routed/forecast cards it shows:
+
 - exact Cardmarket product id plus card/set/number when available;
 - EU fair value and validated buy;
 - Deal Score and route signal;
 - EU PCS, EU LQS, ECS, BOS;
 - expanded Market profile diagnostics;
 - simplified current route evidence plus expandable raw route fields;
+- an **Immutable forecast · audit view** when a stored model prediction exists;
 - latest matured outcomes available for the selected card.
+
+For discovery-only cards it shows the existing candidate sourcing evidence such as candidate buy, Cardmarket averages, gap, Deal Score and CardTrader visible supply. These remain explicitly labelled **pre-route** and do not become route recommendations merely because they are visible in Card detail.
+
+For `RESEARCH_WATCH` cards it shows the available research-market observations and the research note without creating a BUY, fair-value override or route signal.
 
 ### Model health
 
