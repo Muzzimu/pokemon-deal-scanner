@@ -213,6 +213,35 @@ Starting maturity gates:
 
 All features remain diagnostic unless chronological walk-forward validation demonstrates incremental out-of-sample value.
 
+### Portfolio capital velocity and inventory allocation
+
+See issue #10: add a future **portfolio / inventory allocation** layer after survival, inventory-risk and probability-based EV are mature enough to support it.
+
+Core principle: a deal should not be judged only by margin or ROI. A high-margin card that ties up capital for months can be a worse use of limited bankroll than a smaller-margin card that turns repeatedly. Track **capital-days consumed** and **capital velocity** explicitly.
+
+Candidate portfolio diagnostics:
+
+- expected net profit;
+- expected / median time-to-sale;
+- `P(sale <= 7d/30d/90d)`;
+- expected capital-days tied up;
+- expected profit per capital-day;
+- expected profit per €100 capital-month;
+- downside / markdown risk;
+- cash committed vs available dry powder.
+
+Start with simple, interpretable metrics and a margin × speed matrix: high-margin/fast-turn priority inventory, high-margin/slow-turn selective inventory, low-margin/fast-turn turnover stock, and low-margin/slow-turn capital-trap candidates.
+
+Do not hard-code universal allocation caps such as 20% per Pokémon or 35% illiquid inventory. Support configurable exposure limits across exact card, Pokémon/character, set, era, condition/grade, collector-vs-competitive demand, illiquid inventory, single acquisition/seller, total capital committed and minimum cash reserve. Later calibrate any defaults from realised portfolio outcomes.
+
+Treat common exposure seriously: multiple cards can share the same Pokémon, set, era, collector-demand, competitive-meta, event/regime or venue risk. Use structural/regime descriptors before relying on noisy statistical covariance estimates.
+
+The operational allocation problem is closer to a **constrained integer knapsack / inventory-allocation problem** than classical frictionless Markowitz optimisation. Given finite bankroll and actual available units, optimize a validated objective such as expected contribution or capital efficiency subject to integer quantities, bankroll, cash reserve, concentration, illiquidity, route eligibility and seller/shipping constraints.
+
+Traditional Kelly should be a late challenger only. Do not feed arbitrary `win_prob` values or binary win/loss assumptions into current deal sizing. If Kelly is ever tested, use calibrated sale/exit distributions, fractional sizing, strict uncertainty caps and comparison against simpler constrained-allocation baselines.
+
+Validate allocation policies chronologically using realised capital-days, realised net profit, markdowns, no-sale outcomes, bankroll growth, turnover, drawdown, idle cash and opportunity capture. Useful capital-efficiency diagnostics may remain informational even if automated sizing is never enabled.
+
 ### Comparable historical experience / AI critic
 
 The architecture for comparable-case retrieval and later optional AI critic is documented in `docs/EXPERIENCE_STORE.md`. Deterministic SQL/Python remains authoritative; any AI critic stays advisory and cannot bypass identity, source-role, maturity or BUY gates.
