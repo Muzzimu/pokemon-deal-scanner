@@ -10,8 +10,17 @@ class ReferenceBand:
     max_eur: float | None
 
 
+DEFAULT_REFERENCE_BANDS = [
+    {"label": "REF_0_10", "min_reference_eur": 0.0, "max_reference_eur": 10.0},
+    {"label": "REF_10_30", "min_reference_eur": 10.0, "max_reference_eur": 30.0},
+    {"label": "REF_30_50", "min_reference_eur": 30.0, "max_reference_eur": 50.0},
+    {"label": "REF_50_100", "min_reference_eur": 50.0, "max_reference_eur": 100.0},
+    {"label": "REF_100_PLUS", "min_reference_eur": 100.0, "max_reference_eur": None},
+]
+
+
 def configured_bands(cfg: dict) -> list[ReferenceBand]:
-    raw = (cfg.get("cross_price_research") or {}).get("reference_bands") or []
+    raw = (cfg.get("cross_price_research") or {}).get("reference_bands") or DEFAULT_REFERENCE_BANDS
     out: list[ReferenceBand] = []
     for band in raw:
         out.append(
