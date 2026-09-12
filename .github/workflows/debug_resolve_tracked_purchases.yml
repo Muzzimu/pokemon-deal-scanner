@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve exact products from Cardmarket catalog
+      - name: Inspect raw Cardmarket product schema
         shell: bash
         run: |
           python - <<'PY'
@@ -23,20 +23,8 @@ jobs:
           with urllib.request.urlopen(req, timeout=90) as r:
               payload=json.load(r)
           rows=payload.get('products') or payload.get('product') or payload.get('data') or []
-          targets=[
-            ('Dragonite VSTAR','050'),('Dragonite V','076'),('Dragonite ex','159'),
-            ('Stunfisk ex','252'),('Drakloak','248'),('Gastly','048'),('Beedrill ex','098'),
-            ('Alolan Vulpix V','033'),('Alolan Vulpix VSTAR','034'),
-            ('Rillaboom VMAX','023'),('Mega Lucario ex','033'),("Cynthia's Spiritomb",'244'),('Mega Dragonite ex','152'),
-          ]
-          for name,num in targets:
-              matches=[]
-              for p in rows:
-                  pname=str(p.get('name') or '')
-                  pnum=str(p.get('number') or p.get('collectorNumber') or '')
-                  if name.lower() in pname.lower() and (pnum==num or pnum.startswith(num+'/') or ('/'+num)==pnum[-len(num)-1:]):
-                      matches.append(p)
-              print('\nTARGET',name,num,'COUNT',len(matches))
-              for p in matches[:30]:
-                  print({k:p.get(k) for k in ('idProduct','name','idExpansion','number','rarity','categoryName')})
+          for pid in (665687,665676,725239,869763):
+              p=next((x for x in rows if int(x.get('idProduct') or 0)==pid),None)
+              print('\nPID',pid)
+              print(json.dumps(p,ensure_ascii=False,sort_keys=True))
           PY
