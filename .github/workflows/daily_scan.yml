@@ -145,7 +145,7 @@ jobs:
           fi
           git commit -m "Update dashboard snapshot ${{ steps.clock.outputs.day }} [skip ci]"
           git fetch origin main
-          if ! git rebase origin/main; then
+          if ! git -c rebase.autoStash=true rebase origin/main; then
             git rebase --abort || true
             echo "Dashboard snapshot publish skipped because main advanced incompatibly"
             exit 1
