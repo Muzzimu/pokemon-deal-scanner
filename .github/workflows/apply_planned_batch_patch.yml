@@ -25,7 +25,7 @@ jobs:
         run: python scripts/apply_planned_batch_patch.py
       - name: Validate repository
         env:
-          PYTHONPATH: src
+          PYTHONPATH: .:src
         run: |
           python -m py_compile dashboard/app.py scripts/*.py src/deal_scanner/*.py
           pytest -q
