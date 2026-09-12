@@ -4,6 +4,7 @@ import csv
 import json
 import math
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -106,36 +107,96 @@ VINTED_FIELDS = [
 
 
 class ScrapeBadgerClient:
-    """Minimal research client.
+    """Minimal research client with conservative 429 handling.
 
-    This client is deliberately separate from production valuation logic. It exposes
-    raw provider responses for research collectors; downstream code must preserve
-    source role and confidence rather than treating these rows as independent votes.
+    ScrapeBadger's official SDKs retry rate-limit responses with exponential backoff.
+    The project uses the same principle here while keeping the dependency surface to
+    `requests`. Research-source failures remain isolated from production valuation.
     """
 
-    def __init__(self, api_key: str | None = None, *, timeout: float = 30.0):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        timeout: float = 30.0,
+        max_retries: int = 6,
+        retry_delay: float = 2.0,
+        min_interval_seconds: float = 1.1,
+    ):
         self.api_key = api_key if api_key is not None else os.environ.get("SCRAPEBADGER_API_KEY", "")
         self.timeout = float(timeout)
+        self.max_retries = max(0, int(max_retries))
+        self.retry_delay = max(0.1, float(retry_delay))
+        self.min_interval_seconds = max(0.0, float(min_interval_seconds))
         self.session = requests.Session()
+        self._last_request_started = 0.0
+        self.rate_limit_retries = 0
 
     @property
     def configured(self) -> bool:
         return bool(self.api_key)
 
+    def _respect_min_interval(self) -> None:
+        if not self._last_request_started or self.min_interval_seconds <= 0:
+            return
+        wait = self.min_interval_seconds - (time.monotonic() - self._last_request_started)
+        if wait > 0:
+            time.sleep(wait)
+
+    def _rate_limit_wait(self, response: requests.Response, attempt: int) -> float:
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(1.0, float(retry_after))
+            except ValueError:
+                pass
+
+        reset = response.headers.get("X-RateLimit-Reset") or response.headers.get("RateLimit-Reset")
+        if reset:
+            try:
+                numeric = float(reset)
+                # APIs commonly encode either epoch seconds or seconds-from-now.
+                if numeric > time.time() - 60:
+                    return max(1.0, numeric - time.time() + 1.0)
+                return max(1.0, numeric)
+            except ValueError:
+                pass
+
+        return min(65.0, self.retry_delay * (2 ** attempt))
+
     def _get(self, url: str, params: dict | None = None) -> dict:
         if not self.configured:
             raise RuntimeError("SCRAPEBADGER_API_KEY is not configured")
-        response = self.session.get(
-            url,
-            params=params or {},
-            headers={"x-api-key": self.api_key},
-            timeout=self.timeout,
-        )
+
+        response: requests.Response | None = None
+        for attempt in range(self.max_retries + 1):
+            self._respect_min_interval()
+            self._last_request_started = time.monotonic()
+            response = self.session.get(
+                url,
+                params=params or {},
+                headers={"x-api-key": self.api_key},
+                timeout=self.timeout,
+            )
+            if response.status_code != 429:
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise RuntimeError("ScrapeBadger returned a non-object JSON payload")
+                return payload
+
+            if attempt >= self.max_retries:
+                break
+            self.rate_limit_retries += 1
+            time.sleep(self._rate_limit_wait(response, attempt))
+
+        assert response is not None
         response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise RuntimeError("ScrapeBadger returned a non-object JSON payload")
-        return payload
+        raise RuntimeError("unreachable")
+
+    def account_info(self) -> dict:
+        """Zero-credit account metadata useful for rate-limit diagnostics."""
+        return self._get("https://scrapebadger.com/v1/account/me")
 
     def ebay_completed(
         self,
@@ -216,6 +277,22 @@ def _bool_int(value) -> int | None:
     if value is None:
         return None
     return int(bool(value))
+
+
+def safe_account_summary(payload: dict) -> dict:
+    """Keep only non-secret service-limit fields from `/v1/account/me`."""
+    if not isinstance(payload, dict):
+        return {}
+    allowed = {
+        "tier", "plan", "subscription", "rate_limit", "rate_limit_per_minute",
+        "credits", "credits_remaining", "credit_balance", "credits_balance",
+    }
+    summary = {}
+    for key, value in payload.items():
+        key_l = str(key).lower()
+        if key_l in allowed and isinstance(value, (str, int, float, bool, type(None))):
+            summary[key_l] = value
+    return summary
 
 
 def read_watchlist(path: Path) -> list[dict]:
