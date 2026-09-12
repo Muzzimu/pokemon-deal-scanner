@@ -157,6 +157,51 @@ Potential dashboard/research outputs include likely leader/follower with confide
 
 A lead/lag relationship is **not automatically arbitrage or a BUY signal**. Any future executable use must separately survive shipping, VAT/import costs, marketplace fees, FX, condition/language differences, seller eligibility, liquidity/time-to-sale and achievable exit economics. Retain the signal as market context even if it never improves formal recommendations.
 
+### Vinted sourcing, resale and liquidity research
+
+See issue #12: validate **Vinted** before treating it as a sourcing channel, resale route or sell-through/liquidity source.
+
+Research priorities:
+
+- benchmark 20–30 representative Pokémon searches/listings across cheap singles, €5–€50 singles, higher-value cards, lots, bundles, modern ex/V, iconic Pokémon and some vintage;
+- confirm Ireland-specific seller/buyer access, destination coverage, shipping, buyer protection, fees, payout mechanics, returns and bundle discounts rather than inferring from UK/continental markets;
+- test exact-card identity extraction conservatively and quarantine lots, ambiguous listings, sealed items and suspected proxy/fake cards;
+- prospectively track stable listing IDs and distinguish active, reserved, sold, withdrawn/deleted, relisted, repriced and unknown disappearance states;
+- do **not** treat disappearance as sale;
+- compare ScrapeBadger, Lobstr and the Pawikoski Vinted wrapper on Ireland coverage, field completeness, status accuracy, new-listing latency, cost, anti-bot resilience, terms/compliance and maintenance burden;
+- keep active Vinted asks as discovery/supply context only, not Cardmarket fair-value evidence;
+- if sold-state transitions validate well, begin with a separate sell-through/liquidity source role rather than a generic price vote;
+- benchmark Vinted as a resale route specifically for €7/€10 bundles, cheap recognisable-Pokémon singles and €5–€30 singles before higher-value cards.
+
+If research passes, start with one narrow daily discovery job, append-only listing snapshots, a `vinted_candidates.csv` research output and manual review. No BUY or fair-value changes at first. Feed validated route economics into issue #11 and prospective listing episodes into issue #4 only after status quality is demonstrated.
+
+### External demand and attention intelligence
+
+See issue #13: research an **external demand / attention intelligence** layer that separates public attention from actual marketplace confirmation.
+
+Recommended source roles:
+
+- **Google Trends** — search-demand context for franchise, set, Pokémon/character, product line and competitive archetype terms where volume is sufficient;
+- **TikTok** — social activity velocity/acceleration and creator breadth, not one-post virality;
+- **YouTube** — topic/creator outperformance relative to each creator's own baseline and early 48–72h confirmation;
+- **X / Twitter** — event/narrative detection, with factual claims verified from authoritative sources before becoming issue #8 event flags;
+- **eBay / Cardmarket / CardTrader / Vinted** — market confirmation through price, sold velocity, supply and liquidity rather than social attention.
+
+Start with source-level diagnostics instead of a synthetic `HYPE_SCORE`: current level vs trailing baseline, 7d/30d change, velocity, acceleration, breadth, persistence/decay, cross-source agreement and lead/lag versus price/sold velocity/supply.
+
+Keep topic mapping explicit across franchise → set/product → Pokémon/character → archetype → exact card. A spike in a broad term such as `Charizard` must not be mechanically assigned to every exact Charizard printing.
+
+Collect attention history prospectively with timestamps, geography, raw/normalized metrics, freshness, provider and missingness state. Avoid present-day backfills that would leak future information into historical forecasts.
+
+Link this layer to:
+
+- issue #7 for future dynamic collector-demand research while keeping persistent popularity separate from temporary attention spikes;
+- issue #8 for event/regime context;
+- issue #9 for testing whether attention leads marketplace changes by cohort;
+- marketplace sources for confirmation rather than automatic trading action.
+
+Initial implementation, if research passes, should be narrow: Google Trends for a small universe of set names, iconic Pokémon and Pokémon TCG terms; one prospective snapshot table; dashboard-only display; no composite score and no BUY/fair-value override. Add TikTok/YouTube/X only if the simpler search-demand layer proves incrementally useful enough to justify cost and maintenance.
+
 ### Experience-driven decision analytics
 
 See issue #4: **relative strength → survival/time-to-sale modeling → inventory risk → probability-based expected value**.
@@ -191,7 +236,7 @@ Candidate covariates should favor relative market position over raw nominal pric
 - validated relative-strength context;
 - event/context flags only as explanatory inputs, not assumed causal multipliers.
 
-Required listing history should preserve listing episodes with exact identity, first-seen and end timestamps, duration, asking price over time, contemporaneous market context, and an explicit event type. Keep confirmed sold, strongly inferred sold, withdrawn/expired, relisted/repriced, and still-active/right-censored states distinct. **Do not treat every disappearance as a sale.** If price changes are observed during a listing's life, use time-varying covariates / interval-split episodes rather than one static price.
+Required listing history should preserve listing episodes with exact identity, first-seen and end timestamps, duration, asking price over time, contemporaneous market context, and an explicit event type. Keep confirmed sold, strongly inferred sold, withdrawn/expired, relisted/repriced, and still-active/right-censored states distinct. **Do not treat every disappearance as a sale.** If price changes are observed during the listing lifetime become observable, use time-varying covariates / interval-split episodes rather than one static price.
 
 Validation rules:
 
