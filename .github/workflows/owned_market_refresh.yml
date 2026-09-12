@@ -48,7 +48,7 @@ jobs:
       - name: Commit owned-card market snapshot
         shell: bash
         run: |
-          if git diff --quiet -- dashboard/data/owned_market.json; then
+          if [ -z "$(git status --porcelain -- dashboard/data/owned_market.json)" ]; then
             echo "No owned-market changes to commit"
             exit 0
           fi
