@@ -1,0 +1,44 @@
+name: Debug resolve tracked purchases
+
+on:
+  push:
+    paths:
+      - '.github/workflows/debug_resolve_tracked_purchases.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore scanner database state
+        uses: actions/cache/restore@v4
+        with:
+          path: db/pokemon_deal_scanner.sqlite
+          key: debug-tracked-${{ github.run_id }}
+          restore-keys: |
+            pokemon-scanner-db-
+      - name: Resolve exact products
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sqlite3, re
+          conn=sqlite3.connect('db/pokemon_deal_scanner.sqlite')
+          conn.row_factory=sqlite3.Row
+          targets=[
+            ('Dragonite VSTAR','050'),('Dragonite V','076'),('Dragonite ex','159'),
+            ('Stunfisk ex','252'),('Drakloak','248'),('Gastly','048'),('Beedrill ex','098'),
+            ('Alolan Vulpix V','033'),('Alolan Vulpix VSTAR','034'),
+            ('Rillaboom VMAX','023'),('Mega Lucario ex','033'),("Cynthia's Spiritomb",'244'),('Mega Dragonite ex','152'),
+          ]
+          for name,num in targets:
+              rows=conn.execute('''SELECT id_product,name,expansion_name,number FROM products
+                                   WHERE lower(name) LIKE ? AND (number LIKE ? OR number LIKE ? OR number LIKE ?)
+                                   ORDER BY id_product''',
+                                ('%'+name.lower()+'%', num+'/%', '%/'+num, num)).fetchall()
+              print('\nTARGET',name,num,'COUNT',len(rows))
+              for r in rows[:20]: print(dict(r))
+          conn.close()
+          PY
