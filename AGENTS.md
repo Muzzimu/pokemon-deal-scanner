@@ -153,3 +153,23 @@ Do not add heavy frameworks, vector databases, or LLM dependencies when the same
 The next research layer should use the existing immutable predictions/outcomes as empirical memory. See `docs/EXPERIENCE_STORE.md`.
 
 Initial rule: **SQL/statistics first; no vector DB and no LLM in the retrieval path.** Comparable-experience retrieval, cross-card/set memory, and an optional AI critic are later phases only after enough matured observations exist.
+
+## 11. Indicator-role separation
+
+The scanner should evolve like a market-research terminal, not a system that forces every useful indicator into the BUY recommendation.
+
+Classify new indicators explicitly into one of four roles:
+
+- **Decision inputs** — variables that have demonstrated stable incremental out-of-sample value and are allowed to influence valuation, PCS/LQS/ECS/BOS, route gates, EV, or BUY logic.
+- **Market diagnostics** — useful descriptive indicators such as trend, depth, seller concentration, relative strength, condition curves, or competitive usage that help explain market state but do not automatically change a recommendation.
+- **Context / risk flags** — reprint announcements, rotation proximity, unusual supply changes, tournament spikes, lifecycle events, or similar signals that prompt interpretation/investigation without being treated as causal trade rules.
+- **Research features** — candidate variables collected and tested prospectively but kept out of production decisions until walk-forward evidence supports promotion.
+
+Rules:
+
+- A signal can be highly useful without ever becoming a BUY input.
+- Do not create a new headline score merely because several diagnostics exist.
+- Do not mechanically combine correlated indicators into a stronger recommendation.
+- The dashboard may be richer than the trading rule: it should surface informative diagnostics/context even when the formal route remains WATCH or insufficient evidence.
+- Promotion from research/diagnostic/context to decision input requires chronological out-of-sample validation showing incremental value over the existing baseline.
+- If an indicator fails to improve decisions but remains interpretable/useful for understanding market state, keep it as a diagnostic rather than deleting it or forcing it into the model.
