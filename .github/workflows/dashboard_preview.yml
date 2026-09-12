@@ -1,0 +1,61 @@
+name: Dashboard 75-card preview
+
+on:
+  push:
+    paths:
+      - '.github/workflows/dashboard_preview.yml'
+      - 'dashboard/data/discovery_preview_2026-09-12.csv'
+
+permissions:
+  contents: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build temporary 75-card dashboard preview
+        run: |
+          python - <<'PY'
+          import csv, json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          snapshot_path = Path('dashboard/data/dashboard_snapshot.json')
+          preview_path = Path('dashboard/data/discovery_preview_2026-09-12.csv')
+          snapshot = json.loads(snapshot_path.read_text(encoding='utf-8'))
+          with preview_path.open(newline='', encoding='utf-8') as fh:
+              preview = [dict(r) for r in csv.DictReader(fh)]
+
+          existing = list(snapshot.get('discovery_candidates') or [])
+          preview_ids = {str(r.get('id_product') or '') for r in preview}
+          research = [
+              r for r in existing
+              if str(r.get('status') or '').upper() == 'RESEARCH_WATCH'
+              and str(r.get('id_product') or '') not in preview_ids
+          ]
+          snapshot['discovery_candidates'] = preview + research
+          snapshot['preview_note'] = (
+              'Temporary dashboard preview using the completed 2026-09-12 scan artifact: '
+              '75 discovery candidates plus any explicit research-watch rows. '
+              'Scanner logic and route decisions are unchanged.'
+          )
+          snapshot['preview_generated_at_utc'] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+          snapshot_path.write_text(
+              json.dumps(snapshot, ensure_ascii=False, separators=(',', ':'), allow_nan=False) + '\n',
+              encoding='utf-8',
+          )
+          print(f"Preview discovery rows: {len(snapshot['discovery_candidates'])} (75 scan candidates + {len(research)} research watch)")
+          PY
+
+      - name: Publish preview snapshot
+        run: |
+          set -euo pipefail
+          git config user.name "pokemon-deal-scanner-dashboard"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard/data/dashboard_snapshot.json
+          git commit -m "Preview dashboard with 75 discovery candidates [skip ci]"
+          git push origin HEAD:main
