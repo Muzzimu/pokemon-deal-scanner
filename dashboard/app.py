@@ -107,7 +107,7 @@ def bundle_recipe_rows(rows: list[dict]) -> list[dict]:
             "Hero V/ex": as_int(row.get("v_ex")),
             "Guaranteed icon": as_int(row.get("icon")),
             "Holo/RH minimum": as_int(row.get("holo_reverse")),
-            "Foil density": (foils / total) if total and foils is not None else None,
+            "Foil density": (foils / total * 100.0) if total and foils is not None else None,
             "Trainers": as_int(row.get("trainers")),
         })
     return output
@@ -125,7 +125,7 @@ def bundle_competitor_rows(rows: list[dict]) -> list[dict]:
             "Hero hits": as_int(row.get("hero_v_ex_count")),
             "Holo": as_int(row.get("holo_count")),
             "Reverse": as_int(row.get("reverse_holo_count")),
-            "Foil density": as_float(row.get("foil_density")),
+            "Foil density": (as_float(row.get("foil_density")) * 100.0) if as_float(row.get("foil_density")) is not None else None,
             "Language": clean_text(row.get("language_mix")) or "UNKNOWN",
             "Duplicates": clean_text(row.get("duplicate_policy")) or "UNKNOWN",
             "Theme": clean_text(row.get("theme")) or "UNKNOWN",

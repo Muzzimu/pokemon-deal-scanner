@@ -18,3 +18,9 @@ def test_dashboard_has_bundle_market_tab():
     text = Path("dashboard/app.py").read_text(encoding="utf-8")
     assert '"Bundle market"' in text
     assert "Business-market diagnostic only" in text
+
+
+def test_bundle_density_is_displayed_as_percent_points():
+    text = Path("dashboard/app.py").read_text(encoding="utf-8")
+    assert "foils / total * 100.0" in text
+    assert 'row.get("foil_density")) * 100.0' in text
