@@ -2,6 +2,9 @@ name: ScrapeBadger Research Pilot
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/scrapebadger-research-trigger'
   schedule:
     # Research collection runs after the core daily scanner. 08:31 UTC is always
     # after the intended 07:00 Europe/Dublin production run in both GMT and IST.
