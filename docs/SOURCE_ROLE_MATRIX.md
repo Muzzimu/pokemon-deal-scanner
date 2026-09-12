@@ -1,6 +1,6 @@
 # Source × role matrix
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 This document defines what each external source is allowed to mean inside the Pokémon deal scanner. The machine-readable mirror is `data/reference/source_role_matrix.csv`.
 
@@ -14,21 +14,62 @@ The core v0.10 principle is that Pokémon is a **segmented international market*
 
 ## Source roles
 
-| Source | Buy | Value | Sell | Main v0.10 role |
+| Source | Buy | Value | Sell | Main v0.12 role |
 | --- | --- | --- | --- | --- |
 | Cardmarket | Primary | **Primary EU** | Secondary | EU price discovery and sourcing baseline |
 | Cardmarket live validator | Verification only | Supporting EU context | — | English/NM current article depth/replacement context |
 | CardTrader | Secondary | Bridge context | **Primary test** | Cross-border bridge; premium must be supported by US/global evidence |
 | TCGplayer | — | **Primary US confirmation** | — | US fair value, US liquidity, CT bridge validation |
+| TCGCSV | — | **Primary US market cache** | — | Automated cached TCGplayer-derived Market Price; proxy only, exact bridge required |
 | eBay Ireland/EU | — | Regional EU secondary/primary sold evidence | Primary | EU transaction/supply context |
 | eBay GLOBAL / EBAY_US | — | US/global confirmation | Primary | US/global transaction/supply context for bridge validation |
+| **eBay ScrapeBadger completed pilot** | — | **Research only** | Research liquidity | Candidate completed/sold observations; same underlying eBay market, not a second price vote |
 | Adverts.ie | Primary local | Local context | Secondary local | Irish sourcing / local benchmark |
 | Gumtree UK/NI | Primary | Secondary | — | Local/UK sourcing with friction controls |
 | Vinted | Secondary | Bundle/local context | Secondary | Consumer bundle demand and selected singles |
+| **Vinted ScrapeBadger pilot** | Discovery research | **No fair-value role** | Research diagnostic | Category-filtered discovery plus prospective listing-state history |
 | DoneDeal | Secondary | Irish context | — | Manual Irish sourcing context |
 | Facebook Marketplace | Primary local | Local context | Secondary local | User-supplied local deal evidence |
 | Public search indexes | Discovery only | Context only | — | Discovery/corroboration only |
 | Frankfurter/ECB FX | — | Support | — | Currency conversion |
+
+## ScrapeBadger research pilots
+
+The 2026-09-12 ScrapeBadger integration is deliberately **outside production valuation and BUY logic**. It uses an isolated research database (`db/scrapebadger_research.sqlite`) and a separate scheduled/manual workflow.
+
+### eBay completed pilot
+
+Initial source role: `EBAY_COMPLETED_CANDIDATE`.
+
+Rules:
+
+- the official eBay Browse API remains the production active-listing/supply collector;
+- ScrapeBadger completed rows represent the **same underlying eBay market**, so they are never an independent second price vote;
+- exact-print matching remains mandatory;
+- Best Offer rows keep sold-state evidence separate from price confidence because the displayed completed price may not equal the confidential accepted offer;
+- physical item location is retained as context but is not assumed from marketplace domain alone;
+- candidate rows begin as research/liquidity evidence with zero production valuation weight;
+- manual validation and deduplication against eBay Product Research/manual sold evidence are required before any promotion.
+
+### Vinted pilot
+
+Initial research roles:
+
+- `VINTED_ACTIVE_DISCOVERY`;
+- `VINTED_LOT_DISCOVERY`;
+- `VINTED_RESALE_DIAGNOSTIC`;
+- `VINTED_CLOSED_STATE_UNPRICED`.
+
+Rules:
+
+- use category-filtered Vinted Ireland searches where possible;
+- exact card identity, language and condition remain untrusted until detail-level validation;
+- Vinted generic conditions such as `Very good` must not be silently converted to Pokémon `NM`;
+- public search visibility is not executable proof: selected candidates receive detail-state checks;
+- `is_closed`, disappearance or removal never becomes a confirmed realised price automatically;
+- Buyer Protection and checkout-dependent shipping remain acquisition friction, not fair value;
+- Vinted asks and closed-state observations have zero production valuation weight during the pilot;
+- prospective state history may later support liquidity/time-to-sale research if status semantics validate.
 
 ## EU deal assessment
 
@@ -89,5 +130,6 @@ Default BOS gates:
 - UK is not silently merged into EU evidence.
 - `GLOBAL` eBay is explicitly US/global context, not guaranteed US-local physical-location evidence.
 - CardTrader multi-ID mappings remain blocked from arbitrage until exact Cardmarket mapping is resolved.
+- Research-provider rows remain research rows until their documented acceptance gates are met; availability alone never promotes them into fair value or BUY logic.
 
 See `docs/MARKET_QUALITY_MODEL.md` for the v0.10 scoring model.
