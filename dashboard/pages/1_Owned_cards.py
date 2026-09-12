@@ -78,6 +78,20 @@ def market_floor(source: dict) -> float | None:
     return as_float(source.get("floor_eur"))
 
 
+def market_robust_floor(source: dict) -> float | None:
+    if str(source.get("status") or "").upper() != "OK":
+        return None
+    return as_float(source.get("robust_floor_eur"))
+
+
+def ask_sample_text(source: dict) -> str | None:
+    values = source.get("ask_sample_eur")
+    if not isinstance(values, list) or not values:
+        return None
+    formatted = " / ".join(eur(v) for v in values)
+    return f"cheapest comparable asks: {formatted}"
+
+
 def market_status(source: dict, source_name: str) -> str:
     status = str(source.get("status") or "NOT_QUERIED").upper()
     if status == "OK":
@@ -86,6 +100,9 @@ def market_status(source: dict, source_name: str) -> str:
             bits.append(f"{source.get('visible_sellers')} sellers")
         if source.get("visible_units") not in (None, ""):
             bits.append(f"{source.get('visible_units')} units")
+        sample = ask_sample_text(source)
+        if sample:
+            bits.append(sample)
         return " · ".join(bits)
     if status == "VERIFY_FINISH":
         return f"{source_name}: finish/parallel could not be verified — floor withheld"
@@ -96,6 +113,47 @@ def market_status(source: dict, source_name: str) -> str:
     if status == "DEGRADED":
         return f"{source_name}: refresh degraded"
     return f"{source_name}: not queried"
+
+
+def historical_reference_quality(row: dict) -> dict:
+    """Consistency diagnostic for product-level Cardmarket summary marks.
+
+    This does not claim that Cardmarket historical sales are EN/NM or finish-clean.
+    It only describes how strongly Trend/1d/7d/30d disagree with one another.
+    """
+    fields = {
+        "Trend": as_float(row.get("trend")),
+        "1d": as_float(row.get("avg1")),
+        "7d": as_float(row.get("avg7")),
+        "30d": as_float(row.get("avg30")),
+    }
+    values = {label: value for label, value in fields.items() if value is not None and value > 0}
+    if len(values) < 3:
+        return {
+            "label": "⚪ INSUFFICIENT",
+            "quality": "INSUFFICIENT",
+            "spread_ratio": None,
+            "values": values,
+            "note": "Fewer than three positive Cardmarket summary marks are available.",
+        }
+    low = min(values.values())
+    high = max(values.values())
+    ratio = high / low if low > 0 else None
+    if ratio is None:
+        quality, label = "INSUFFICIENT", "⚪ INSUFFICIENT"
+    elif ratio >= 2.0:
+        quality, label = "LOW", "🔴 LOW"
+    elif ratio >= 1.35:
+        quality, label = "MEDIUM", "🟠 MEDIUM"
+    else:
+        quality, label = "HIGH", "🟢 HIGH"
+    return {
+        "label": label,
+        "quality": quality,
+        "spread_ratio": ratio,
+        "values": values,
+        "note": "Summary-consistency diagnostic only; historical sales may mix condition/language and must not be treated as an EN/NM realised-price series.",
+    }
 
 
 def index_by_pid(rows: list[dict]) -> dict[str, dict]:
@@ -123,7 +181,7 @@ else:
     st.warning("The owned-card live market refresh has not published yet. Cost basis is available, but current comparable asks may be blank.")
 
 st.info(
-    "Active asks are competition references, not realised sale prices. CM/CT floors are shown only when the refresh can match the exact Cardmarket product, English, NM/raw status and the stored finish rule."
+    "Active asks are competition references, not realised sale prices. Literal floor = cheapest exact comparable ask. Robust ask = median of the cheapest three comparable asks when available. Historical confidence below measures consistency of Cardmarket summary marks only."
 )
 
 search = st.text_input("Find owned card", placeholder="e.g. Dragonite, Gastly, Lucario").strip().lower()
@@ -145,7 +203,7 @@ def best_active_ask(row: dict) -> float:
         value = market_floor(source)
         if value is not None:
             vals.append(value)
-    return max(vals) if False else (min(vals) if vals else -1e18)
+    return min(vals) if vals else -1e18
 
 
 if sort_mode == "Highest landed cost":
@@ -169,14 +227,19 @@ for start in range(0, len(view), 2):
             ct = card.get("cardtrader") or {}
             cm_floor = market_floor(cm)
             ct_floor = market_floor(ct)
+            cm_robust = market_robust_floor(cm)
+            ct_robust = market_robust_floor(ct)
             active_floors = [x for x in (cm_floor, ct_floor) if x is not None]
+            robust_floors = [x for x in (cm_robust, ct_robust) if x is not None]
             lowest_ask = min(active_floors) if active_floors else None
+            lowest_robust = min(robust_floors) if robust_floors else None
             landed = as_float(card.get("landed_cost_eur"))
             item_paid = as_float(card.get("item_paid_eur"))
             model_exit = as_float(route.get("best_sell_net_eur"))
             model_profit = None if model_exit is None or landed is None else model_exit - landed
             model_roi = None if model_profit is None or not landed else (model_profit / landed) * 100.0
             gross_room = None if lowest_ask is None or landed is None else lowest_ask - landed
+            history = historical_reference_quality(tracked_row)
 
             with st.container(border=True):
                 art = image_url(pid, "low")
@@ -204,20 +267,33 @@ for start in range(0, len(view), 2):
                 c2.metric("Your landed cost", eur(landed))
 
                 c3, c4 = st.columns(2)
-                c3.metric("Lowest comparable CM ask", eur(cm_floor))
-                c4.metric("Lowest comparable CT ask", eur(ct_floor))
+                c3.metric("CM literal floor", eur(cm_floor))
+                c4.metric("CM robust ask", eur(cm_robust))
                 st.caption(market_status(cm, "Cardmarket"))
-                st.caption(market_status(ct, "CardTrader"))
 
                 c5, c6 = st.columns(2)
-                c5.metric("Lowest comparable active ask", eur(lowest_ask))
-                c6.metric("Gross room vs landed", eur(gross_room))
+                c5.metric("CT literal floor", eur(ct_floor))
+                c6.metric("CT robust ask", eur(ct_robust))
+                st.caption(market_status(ct, "CardTrader"))
+
+                c7, c8 = st.columns(2)
+                c7.metric("Lowest active floor", eur(lowest_ask))
+                c8.metric("Lowest robust ask", eur(lowest_robust))
+
+                c9, c10 = st.columns(2)
+                c9.metric("Gross room vs literal floor", eur(gross_room))
+                c10.metric("Historical ref. confidence", history["label"])
+                spread = history.get("spread_ratio")
+                if spread is not None:
+                    st.caption(f"Cardmarket Trend/1d/7d/30d summary spread: **{spread:.2f}×**. {history['note']}")
+                else:
+                    st.caption(history["note"])
                 st.caption("Gross room is before selling fees, outbound shipping and execution slippage; it is not profit.")
 
                 if model_exit is not None:
-                    c7, c8 = st.columns(2)
-                    c7.metric("Modelled net exit", eur(model_exit))
-                    c8.metric("Your profit at modelled exit", eur(model_profit))
+                    c11, c12 = st.columns(2)
+                    c11.metric("Modelled net exit", eur(model_exit))
+                    c12.metric("Your profit at modelled exit", eur(model_profit))
                     st.markdown(f"**Your ROI at modelled exit:** {pct(model_roi)}")
                     if route.get("best_sell_channel"):
                         st.caption(f"Modelled exit route: {str(route['best_sell_channel']).replace('_', ' ').title()}")
@@ -237,6 +313,16 @@ for start in range(0, len(view), 2):
                     st.caption("Basket shipping is currently allocated equally per card so item price and landed investment remain separately visible.")
 
                 with st.expander("Market / model detail"):
+                    st.write({
+                        "Cardmarket trend": as_float(tracked_row.get("trend")),
+                        "Cardmarket 1d average": as_float(tracked_row.get("avg1")),
+                        "Cardmarket 7d average": as_float(tracked_row.get("avg7")),
+                        "Cardmarket 30d average": as_float(tracked_row.get("avg30")),
+                        "historical summary confidence": history.get("quality"),
+                        "historical summary spread x": history.get("spread_ratio"),
+                        "CM floor-to-robust spread %": as_float(cm.get("floor_to_robust_spread_pct")),
+                        "CT floor-to-robust spread %": as_float(ct.get("floor_to_robust_spread_pct")),
+                    })
                     if route:
                         st.write({
                             "EU fair value": as_float(route.get("eu_fair_value_eur")),
@@ -249,17 +335,10 @@ for start in range(0, len(view), 2):
                             "BOS": as_float(route.get("bridge_opportunity_score")),
                             "quality gate": route.get("quality_gate_reason"),
                         })
-                    else:
-                        st.write({
-                            "Cardmarket trend": as_float(tracked_row.get("trend")),
-                            "Cardmarket 1d average": as_float(tracked_row.get("avg1")),
-                            "Cardmarket 7d average": as_float(tracked_row.get("avg7")),
-                            "Cardmarket 30d average": as_float(tracked_row.get("avg30")),
-                        })
                     if prediction:
                         st.caption("Immutable forecast exists for this card.")
 
 st.divider()
 st.caption(
-    "UX rule: cost basis and current comparable market asks are shown before scanner diagnostics. Technical evidence remains available under expanders; the dashboard does not invent a new BUY/SELL gate."
+    "UX rule: cost basis and current comparable market asks are shown before scanner diagnostics. Robust asks and historical summary consistency are diagnostics only; the dashboard does not invent a new BUY/SELL gate."
 )
