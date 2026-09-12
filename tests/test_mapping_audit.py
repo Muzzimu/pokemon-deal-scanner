@@ -48,6 +48,7 @@ def test_ambiguous_multi_mapping_is_blocked(tmp_path):
     ).fetchone()
     assert offer["id_product"] is None
     assert status["offers_blocked_from_ambiguous_mapping"] == 1
+    assert status["snapshot_blueprints_guarded"] == 2
     assert audit_path.exists()
 
 
@@ -89,3 +90,25 @@ def test_conflicting_override_is_blocked(tmp_path):
     rows = {int(r["blueprint_id"]): r for r in build_mapping_audit(conn, overrides)}
     assert rows[5002]["mapping_status"] == "MAPPING_CONFLICT"
     assert rows[5002]["resolved_id_product"] == ""
+
+
+def test_guard_only_changes_requested_snapshot(tmp_path):
+    conn = _setup(tmp_path)
+    insert_cardtrader_offers(conn, [
+        {"offer_id": 2, "blueprint_id": 5002, "id_product": 102, "seller_id": 2, "quantity": 1,
+         "price_eur": 19.0, "language": "en", "condition": "Near Mint", "graded": False,
+         "on_vacation": False, "ct_zero": True},
+    ], "2026-09-10")
+
+    apply_cardtrader_mapping_guard(conn, "2026-09-11", None, tmp_path / "audit.csv")
+
+    current = conn.execute(
+        "SELECT id_product FROM cardtrader_offer_snapshots WHERE snapshot_date=? AND offer_id=2",
+        ("2026-09-11",),
+    ).fetchone()
+    prior = conn.execute(
+        "SELECT id_product FROM cardtrader_offer_snapshots WHERE snapshot_date=? AND offer_id=2",
+        ("2026-09-10",),
+    ).fetchone()
+    assert current["id_product"] is None
+    assert int(prior["id_product"]) == 102
