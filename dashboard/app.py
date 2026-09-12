@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config.yaml"
 SNAPSHOT_PATH = ROOT / "dashboard" / "data" / "dashboard_snapshot.json"
 TRACKED_REVIEW_PATH = ROOT / "data" / "reference" / "tracked_review_cards.csv"
+OWNED_LEDGER_PATH = ROOT / "data" / "reference" / "owned_resale_cards.csv"
+OWNED_MARKET_PATH = ROOT / "dashboard" / "data" / "owned_market.json"
 
 RESELL_SIGNALS = {"RESELL_TEST"}
 WATCH_SIGNALS = {"WATCH_ONLY"}
@@ -478,19 +480,69 @@ def render_score_line(row: dict) -> None:
     st.markdown(" · ".join(f"**{score_badge(metric, row)}**" for metric in ("PCS", "LQS", "ECS", "BOS")))
 
 
+
+def owned_floor(row: dict, source_name: str):
+    source = row.get(source_name) or {}
+    if not isinstance(source, dict) or str(source.get("status") or "").upper() != "OK":
+        return None
+    return as_float(source.get("floor_eur"))
+
+
+def owned_source_caption(row: dict, source_name: str, label: str) -> str:
+    source = row.get(source_name) or {}
+    if not isinstance(source, dict):
+        return f"{label}: not queried"
+    status = str(source.get("status") or "NOT_QUERIED").upper()
+    if status == "OK":
+        bits = [f"{label}: comparable EN/NM ask"]
+        if source.get("visible_sellers") not in (None, ""):
+            bits.append(f"{source.get('visible_sellers')} sellers")
+        if source.get("visible_units") not in (None, ""):
+            bits.append(f"{source.get('visible_units')} units")
+        return " · ".join(bits)
+    if status == "VERIFY_FINISH":
+        return f"{label}: finish/parallel not verified — floor withheld"
+    if status == "NO_COMPARABLE_EN_NM_ASK":
+        return f"{label}: no comparable EN/NM ask found"
+    if status.startswith("MISSING_"):
+        return f"{label}: source unavailable in this refresh"
+    if status == "DEGRADED":
+        return f"{label}: refresh degraded"
+    return f"{label}: not queried"
+
+
 def render_route_card(row: dict) -> None:
     with st.container(border=True):
         st.markdown(f"#### {short_name(row.get('name'))}")
         st.caption(card_context(row))
         st.markdown(f"**{signal_label(row.get('route_signal'))}**")
         st.markdown(f"**Exit route:** {human_channel(row.get('best_sell_channel'))}")
+        owner_landed = as_float(row.get("landed_cost_eur"))
+        if owner_landed is not None:
+            o1, o2 = st.columns(2)
+            o1.metric("You paid", format_eur(row.get("item_paid_eur")))
+            o2.metric("Your landed cost", format_eur(owner_landed))
+            cm_floor = owned_floor(row, "cardmarket")
+            ct_floor = owned_floor(row, "cardtrader")
+            o3, o4 = st.columns(2)
+            o3.metric("Lowest comparable CM ask", format_eur(cm_floor))
+            o4.metric("Lowest comparable CT ask", format_eur(ct_floor))
+            st.caption(owned_source_caption(row, "cardmarket", "Cardmarket"))
+            st.caption(owned_source_caption(row, "cardtrader", "CardTrader"))
         p1, p2 = st.columns(2)
-        p1.metric("Validated buy", format_eur(row.get("best_validated_buy_eur")))
+        p1.metric("Scanner validated buy", format_eur(row.get("best_validated_buy_eur")))
         p2.metric("EU fair value", format_eur(row.get("eu_fair_value_eur")))
         p3, p4 = st.columns(2)
         p3.metric("Modelled net exit", format_eur(row.get("best_sell_net_eur")))
-        p4.metric("Modelled net profit", format_eur(row.get("net_spread_eur")))
-        st.markdown(f"**Modelled ROI:** {format_pct(row.get('net_roi_pct'))}")
+        owner_exit = as_float(row.get("best_sell_net_eur"))
+        if owner_landed is not None and owner_exit is not None:
+            owner_profit = owner_exit - owner_landed
+            owner_roi = (owner_profit / owner_landed * 100.0) if owner_landed else None
+            p4.metric("Your profit at modelled exit", format_eur(owner_profit))
+            st.markdown(f"**Your ROI at modelled exit:** {format_pct(owner_roi)}")
+        else:
+            p4.metric("Scanner modelled net profit", format_eur(row.get("net_spread_eur")))
+            st.markdown(f"**Scanner modelled ROI:** {format_pct(row.get('net_roi_pct'))}")
         position = eu_position_text(row)
         if position:
             st.caption(position)
@@ -510,14 +562,29 @@ def render_tracked_card(row: dict) -> None:
     with st.container(border=True):
         st.markdown(f"#### {short_name(row.get('name'))}")
         st.caption(card_context(row))
-        st.markdown("**🟣 TRACKED REVIEW**")
+        st.markdown("**🟣 OWNED REVIEW**")
         c1, c2 = st.columns(2)
-        c1.metric("Cardmarket trend", format_eur(row.get("trend")))
-        c2.metric("30d average", format_eur(row.get("avg30")))
+        c1.metric("You paid", format_eur(row.get("item_paid_eur")))
+        c2.metric("Your landed cost", format_eur(row.get("landed_cost_eur")))
+        cm_floor = owned_floor(row, "cardmarket")
+        ct_floor = owned_floor(row, "cardtrader")
         c3, c4 = st.columns(2)
-        c3.metric("7d average", format_eur(row.get("avg7")))
-        c4.metric("1d average", format_eur(row.get("avg1")))
-        st.caption("Tracked for review. No BUY, fair-value or exit signal is fabricated when the card is not in the routed model.")
+        c3.metric("Lowest comparable CM ask", format_eur(cm_floor))
+        c4.metric("Lowest comparable CT ask", format_eur(ct_floor))
+        st.caption(owned_source_caption(row, "cardmarket", "Cardmarket"))
+        st.caption(owned_source_caption(row, "cardtrader", "CardTrader"))
+        with st.expander("Market context"):
+            st.write({
+                "Cardmarket trend": format_eur(row.get("trend")),
+                "30d average": format_eur(row.get("avg30")),
+                "7d average": format_eur(row.get("avg7")),
+                "1d average": format_eur(row.get("avg1")),
+                "purchase date": row.get("purchase_date"),
+                "purchase source": row.get("purchase_source"),
+                "allocated shipping": format_eur(row.get("allocated_shipping_eur")),
+                "finish rule": row.get("finish_requirement"),
+            })
+        st.caption("Owned-card review. Active asks are competition references, not realised exits; no BUY/SELL signal is fabricated when the card is not routed.")
 
 
 st.set_page_config(page_title="Pokémon Deal Scanner", page_icon="🃏", layout="wide")
@@ -558,6 +625,20 @@ else:
     st.error("No scanner database or hosted dashboard snapshot is available yet.")
     st.stop()
 
+owned_market_payload = read_snapshot(OWNED_MARKET_PATH)
+owned_rows = list(owned_market_payload.get("cards") or [])
+if not owned_rows:
+    owned_rows = read_csv(OWNED_LEDGER_PATH)
+owned_by_pid = {str(r.get("id_product")): dict(r) for r in owned_rows if r.get("id_product") not in (None, "")}
+enriched_tracked = []
+for source in tracked:
+    row = dict(source)
+    owned = owned_by_pid.get(str(row.get("id_product")))
+    if owned:
+        row.update({k: v for k, v in owned.items() if v not in (None, "")})
+    enriched_tracked.append(row)
+tracked = enriched_tracked
+
 for key in ("t7", "t7_cards", "t30", "t30_cards"):
     maturity[key] = int(maturity.get(key) or 0)
 
@@ -587,9 +668,9 @@ with tab_today:
     f0, f1, f2, f3 = st.columns([2, 2, 2, 3])
     review_set = f0.selectbox(
         "Review set",
-        options=["Routed + tracked", "Tracked cards", "Routed priority"],
+        options=["Routed + owned", "Owned cards", "Routed priority"],
         index=0,
-        help="Tracked cards are the exact resale-review cards on the public-safe watchlist; bundle-only €1 hero cards are excluded.",
+        help="Owned cards are the exact resale-review purchases; bundle-only €1 hero cards are excluded.",
     )
     selected_signals = f1.multiselect("Signals", options=non_edge_signals, default=non_edge_signals, format_func=signal_label)
     price_bands = sorted({clean_text(r.get("price_band")) for r in routes if clean_text(r.get("price_band"))})
@@ -597,7 +678,7 @@ with tab_today:
     search_text = f3.text_input("Find card", placeholder="e.g. Dragonite, Pikachu, Charizard").strip().lower()
 
     routed_priority = []
-    if review_set in {"Routed + tracked", "Routed priority"}:
+    if review_set in {"Routed + owned", "Routed priority"}:
         for row in routes:
             signal = str(row.get("route_signal") or "").upper()
             if signal == "NO_EDGE" or (selected_signals and signal not in selected_signals):
@@ -613,7 +694,7 @@ with tab_today:
     tracked_map = {str(r.get("id_product") or "").strip(): dict(r) for r in tracked if r.get("id_product") not in (None, "")}
     route_map = {str(r.get("id_product") or "").strip(): dict(r) for r in routes if r.get("id_product") not in (None, "")}
     tracked_priority = []
-    if review_set in {"Routed + tracked", "Tracked cards"}:
+    if review_set in {"Routed + owned", "Owned cards"}:
         for pid_key, tracked_row in tracked_map.items():
             if search_text and search_text not in str(tracked_row.get("name") or "").lower():
                 continue
@@ -639,14 +720,14 @@ with tab_today:
         combined_priority.append(row)
 
     if combined_priority:
-        display_limit = len(combined_priority) if review_set == "Tracked cards" else min(len(combined_priority), 18)
+        display_limit = len(combined_priority) if review_set == "Owned cards" else min(len(combined_priority), 18)
         for start in range(0, display_limit, 3):
             cols = st.columns(3)
             for offset, row in enumerate(combined_priority[start:start + 3]):
                 with cols[offset]:
                     if clean_text(row.get("route_signal")):
                         if row.get("_tracked"):
-                            st.caption("🟣 Tracked review card")
+                            st.caption("🟣 Owned review card")
                         render_route_card(row)
                     else:
                         render_tracked_card(row)
