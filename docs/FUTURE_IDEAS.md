@@ -109,6 +109,31 @@ Potential uses:
 
 Useful peer dimensions may eventually include modern/vintage regime, price band, set age, rarity/treatment, distribution type, collector-demand regime, competitive-dependency regime and liquidity/supply depth. Keep this layer diagnostic until chronological walk-forward validation shows stable incremental out-of-sample value over simpler baselines.
 
+### Market-regime and event-response analytics
+
+See issue #8: add a future **market-regime / event-response** research layer that detects structural changes in card behaviour and measures event impact without automatically changing BUY logic.
+
+Recommended sequence:
+
+1. start with **deterministic regime diagnostics** built from observable market series;
+2. add **change-point detection** once enough continuous history exists;
+3. build **event studies** once the event calendar and peer baselines are sufficiently rich;
+4. consider **Markov / hidden-state regime models** only later if card-level data density is high enough to support them reliably.
+
+Candidate inputs include exact-print price/fair-value changes, transaction velocity, total supply, near-floor supply/depth, seller count/concentration, supply runway, dispersion/volatility and later survival/time-to-sale outcomes.
+
+Potential regime outputs should remain neutral and descriptive, for example `STABLE`, `ACCELERATING`, `HIGH_VOLATILITY`, `COOLING` or `SUPPLY_SHOCK`. Do not infer "hype", "panic" or "crash" solely from a mathematical regime change.
+
+For change-point work, retrospective methods such as PELT can be used to segment historical lifecycles, while online/Bayesian methods can be evaluated later for live monitoring. Do not treat an offline segmentation method as an instantaneous live detector.
+
+Build an event calendar for observable Pokémon-market events such as set releases, rotation/legality changes, major tournament/meta shifts, reprint or product-supply announcements, anniversaries and major official product events. Measure actual event-window response rather than assigning a bullish/bearish direction in advance.
+
+Where possible, estimate abnormal price/liquidity behaviour relative to leakage-safe peer baselines using structural dimensions from issue #7 rather than one universal Pokémon index. Potential outputs include abnormal event-window returns, supply/velocity responses, effect duration/decay, cross-card consistency and post-event liquidity/time-to-sale impact.
+
+Treat Markov regime-switching as a later challenger only. Do not encode assumptions such as fixed 14–21 day hype states, reprint transitions with probability 1.0, or one fixed three-state structure across all eras/cards. Any hidden-state model must beat simpler deterministic/change-point baselines on chronological holdouts.
+
+This layer is primarily a **market diagnostic / context / research feature**. A regime label may be useful on the dashboard even if it never becomes a BUY input. No automatic BUY override, fair-value override or score reweighting merely because a regime changes.
+
 ### Experience-driven decision analytics
 
 See issue #4: **relative strength → survival/time-to-sale modeling → inventory risk → probability-based expected value**.
