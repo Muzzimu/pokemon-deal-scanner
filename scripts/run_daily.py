@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -59,6 +60,12 @@ def refresh_catalog_needed(cfg, archive_dir: Path, today: date) -> bool:
         return True
     age_days = (today - datetime.fromtimestamp(existing.stat().st_mtime).date()).days
     return today.weekday() == int(cfg["catalog"]["refresh_weekday"]) or age_days >= int(cfg["catalog"]["refresh_if_older_days"])
+
+
+def _record_timing(timings: dict[str, float], name: str, started: float) -> None:
+    elapsed = round(time.perf_counter() - started, 3)
+    timings[name] = elapsed
+    print(f"[timing] {name}: {elapsed:.3f}s", flush=True)
 
 
 def bootstrap_cardtrader(conn, client: CardTraderClient) -> dict:
@@ -135,6 +142,9 @@ def sync_cardtrader_marketplace(conn, cfg, client: CardTraderClient, today: str)
 
 
 def main() -> int:
+    run_started = time.perf_counter()
+    timings: dict[str, float] = {}
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(ROOT / "config.yaml"))
     ap.add_argument("--demo", action="store_true", help="Use bundled offline Cardmarket + CardTrader fixtures")
@@ -162,6 +172,7 @@ def main() -> int:
     ensure_tcgcsv_schema(conn)
     ensure_model_validation_schema(conn)
 
+    stage_started = time.perf_counter()
     archive_dir = None if args.no_archive else raw_dir
     if args.demo:
         fixtures = ROOT / "tests" / "fixtures"
@@ -188,11 +199,15 @@ def main() -> int:
         print(f"Cardmarket price rows skipped because product is absent from catalogue: {skipped_price_rows}")
     price_count = insert_price_snapshot(conn, prices, today_s, source_created_at)
     validated_count = load_en_nm_overrides(conn, override_csv)
+    _record_timing(timings, "cardmarket_ingest", stage_started)
 
+    stage_started = time.perf_counter()
     sourcing_status = generate_cardmarket_sourcing_report(
         conn, cfg, sourcing_csv, output_dir / "cardmarket_sourcing.csv"
     )
+    _record_timing(timings, "cardmarket_sourcing", stage_started)
 
+    stage_started = time.perf_counter()
     cardtrader_status: dict = {"enabled": False, "reason": "not configured"}
     if args.demo and not args.skip_cardtrader:
         fixtures = ROOT / "tests" / "fixtures"
@@ -228,7 +243,9 @@ def main() -> int:
             cardtrader_status = {"enabled": True, "mode": "live", "bootstrap": bootstrap_status, **sync_status}
         else:
             cardtrader_status = {"enabled": False, "reason": f"missing {cfg['cardtrader']['token_env']}"}
+    _record_timing(timings, "cardtrader_sync", stage_started)
 
+    stage_started = time.perf_counter()
     ct_date = latest_cardtrader_snapshot_date(conn)
     guard_snapshot = ct_date if ct_date == today_s else None
     mapping_guard_status = apply_cardtrader_mapping_guard(
@@ -237,13 +254,17 @@ def main() -> int:
         mapping_override_csv,
         output_dir / "cardtrader_mapping_audit.csv",
     )
+    _record_timing(timings, "cardtrader_mapping_guard", stage_started)
 
+    stage_started = time.perf_counter()
     generate_reports(conn, cfg, output_dir)
 
     ct_date = latest_cardtrader_snapshot_date(conn)
     seller_rows = build_seller_baskets(conn, ct_date, cfg)
     write_seller_baskets(output_dir / "seller_baskets.csv", seller_rows)
+    _record_timing(timings, "reports_and_baskets", stage_started)
 
+    stage_started = time.perf_counter()
     if args.skip_ebay:
         ebay_status = {"enabled": False, "reason": "--skip-ebay"}
         from deal_scanner.market_observatory import write_market_reference
@@ -253,7 +274,9 @@ def main() -> int:
             conn, cfg, ebay_watchlist_csv, ebay_sold_csv,
             output_dir / "ebay_market_reference.csv",
         )
+    _record_timing(timings, "ebay_observatory", stage_started)
 
+    stage_started = time.perf_counter()
     resale_rows = generate_resale_candidates(
         output_dir / "cardmarket_sourcing.csv",
         output_dir / "ebay_market_reference.csv",
@@ -277,7 +300,9 @@ def main() -> int:
         output_dir / "resale_candidates.csv",
         output_dir / "core_watch_universe.csv",
     )
+    _record_timing(timings, "route_generation", stage_started)
 
+    stage_started = time.perf_counter()
     # v0.12: no-key TCGCSV integration. CardTrader's explicit tcg_player_id is the
     # only accepted CM<->TCGplayer bridge. TCGCSV Market Price is a US reference;
     # conditionless lowPrice never becomes an executable Ireland acquisition floor.
@@ -299,7 +324,9 @@ def main() -> int:
         )
         tcgcsv_model_observations = publish_tcgcsv_model_observations(conn, cfg, today)
         tcgcsv_status["model_observations_published"] = tcgcsv_model_observations
+    _record_timing(timings, "tcgcsv_refresh", stage_started)
 
+    stage_started = time.perf_counter()
     if args.demo:
         cardmarket_live_status = {"enabled": False, "reason": "demo mode", "queried": 0, "rows": 0}
     else:
@@ -314,7 +341,9 @@ def main() -> int:
             api_key=live_api_key,
             today=today,
         )
+    _record_timing(timings, "cardmarket_live_validation", stage_started)
 
+    stage_started = time.perf_counter()
     # v0.10+: segmented EU / US / CardTrader-bridge market-quality model.
     market_quality_status = apply_market_quality(
         cfg,
@@ -327,7 +356,9 @@ def main() -> int:
         output_dir / "market_quality.csv",
         today=today,
     )
+    _record_timing(timings, "market_quality", stage_started)
 
+    stage_started = time.perf_counter()
     # v0.11+: immutable daily forecasts + walk-forward outcomes. The first successful
     # snapshot in each ISO week is the benchmark cohort. TCGCSV US Market Price marks
     # are available as explicitly labelled proxies, never as confirmed realised sales.
@@ -341,8 +372,16 @@ def main() -> int:
         output_dir,
         today=today,
     )
+    _record_timing(timings, "model_validation", stage_started)
 
+    stage_started = time.perf_counter()
     maintenance_status = compact_history(conn, cfg, today=today)
+    _record_timing(timings, "history_maintenance", stage_started)
+
+    timings["total_scanner"] = round(time.perf_counter() - run_started, 3)
+    timing_path = output_dir / "scanner_timings.json"
+    timing_path.write_text(json.dumps({"snapshot_date": today_s, "seconds": timings}, indent=2), encoding="utf-8")
+    print(f"[timing] total_scanner: {timings['total_scanner']:.3f}s", flush=True)
 
     status_path = output_dir / "scanner_status.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))
@@ -365,6 +404,7 @@ def main() -> int:
         "model_validation": model_validation_status,
         "history_maintenance": maintenance_status,
         "seller_basket_rows": len(seller_rows),
+        "timings_seconds": timings,
     })
     status_path.write_text(json.dumps(status, indent=2), encoding="utf-8")
 
