@@ -14,6 +14,31 @@ Status: durable backlog index for ideas that are useful but intentionally deferr
 
 See issue #1: validate the existing model and T+7 outcomes before adding correlated price sources or extra valuation votes.
 
+### Condition-specific pricing and grading normalization
+
+See issue #5: build a future condition-aware valuation layer only after enough reliable condition-specific evidence exists.
+
+Core design principles:
+
+- model an exact card as `printing × language × condition × treatment/finish`, rather than one undifferentiated asset;
+- learn NM/LP/MP/HP/DMG-style condition effects empirically rather than hard-coding universal discount multipliers;
+- estimate condition discount curves by relevant cohorts such as era/set age, price band, rarity/treatment and scarcity/liquidity regime;
+- build an explicit cross-market normalization layer instead of silently equating different marketplace grading systems;
+- keep graded cards (`grader + numeric grade`) separate from raw-condition tiers;
+- preserve realised-sale evidence, active asks, sample counts, freshness and source confidence separately;
+- use robust statistics such as median/MAD/IQR for thin/skewed markets and flag suspicious outliers as condition/anomaly risk rather than automatically reclassifying seller condition;
+- for sparse condition slices, prefer cohort/hierarchical shrinkage or `INSUFFICIENT_EVIDENCE` over fabricated point estimates;
+- treat condition as a future covariate in survival/time-to-sale modeling, because condition-specific sell-through may differ materially by era and scarcity.
+
+Potential future outputs:
+
+- condition-specific fair/executable values where supported;
+- condition/NM ratios by validated cohort;
+- condition-specific liquidity and time-to-sale diagnostics;
+- sample count, freshness, dispersion and confidence for each condition slice.
+
+Current production acquisition target remains English + NM unless a later validated model/version explicitly changes that rule. Condition-aware outputs should begin as research/diagnostics and only enter valuation or BUY logic after chronological out-of-sample validation.
+
 ### Experience-driven decision analytics
 
 See issue #4: **relative strength → survival/time-to-sale modeling → inventory risk → probability-based expected value**.
