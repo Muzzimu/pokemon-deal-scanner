@@ -40,5 +40,5 @@ jobs:
         run: python -m py_compile dashboard/app.py scripts/export_dashboard_snapshot.py
       - name: Run tests
         env:
-          PYTHONPATH: src
+          PYTHONPATH: .:src
         run: pytest -q
